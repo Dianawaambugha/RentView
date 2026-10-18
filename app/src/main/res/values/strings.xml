@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">RentVew</string>
+    <string-array name="user_roles">
+        <item>Select your role</item>
+        <item>Tenant</item>
+        <item>Property Owner</item>
+    </string-array>
+</resources>

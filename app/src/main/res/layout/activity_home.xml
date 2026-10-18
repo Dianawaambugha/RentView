@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="RentView"
+            android:textColor="#173B57"
+            android:textSize="30sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/tvHomeGreeting"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Welcome!"
+            android:textColor="#263746"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvHomeRole"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Your account"
+            android:textColor="#757575"
+            android:textSize="16sp"
+            android:layout_marginBottom="28dp" />
+
+        <TextView
+            android:id="@+id/tvDashboardTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Your Dashboard"
+            android:textColor="#173B57"
+            android:textSize="21sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnHomePrimary"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="Explore Properties"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:backgroundTint="#173B57"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnHomeSecondary"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="My Account"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:backgroundTint="#315D78"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/tvHomeProfile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Account details will appear here."
+            android:textColor="#263746"
+            android:textSize="16sp"
+            android:padding="16dp"
+            android:background="#FFFFFF"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btnLogout"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Log Out"
+            android:textColor="#173B57"
+            android:textSize="16sp"
+            android:backgroundTint="#DCE5EC" />
+
+    </LinearLayout>
+    ```
+
+</ScrollView>
