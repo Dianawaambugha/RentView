@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F5F7FA"
@@ -10,88 +11,82 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:gravity="center_horizontal"
         android:padding="24dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="RentView"
-            android:textColor="#173B57"
-            android:textSize="30sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp" />
 
         <TextView
             android:id="@+id/tvHomeGreeting"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Welcome!"
-            android:textColor="#263746"
-            android:textSize="26sp"
+            android:text="Welcome, User!"
+            android:textSize="28sp"
             android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
+            android:textColor="#173B57"
+            android:gravity="center"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="12dp" />
 
         <TextView
             android:id="@+id/tvHomeRole"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Your account"
-            android:textColor="#757575"
+            android:text="Account type: Tenant"
             android:textSize="16sp"
+            android:textColor="#667788"
+            android:gravity="center"
             android:layout_marginBottom="28dp" />
 
         <TextView
             android:id="@+id/tvDashboardTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Your Dashboard"
-            android:textColor="#173B57"
-            android:textSize="21sp"
+            android:text="Tenant Dashboard"
+            android:textSize="24sp"
             android:textStyle="bold"
-            android:layout_marginBottom="16dp" />
-
-        <Button
-            android:id="@+id/btnHomePrimary"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:text="Explore Properties"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:backgroundTint="#173B57"
-            android:layout_marginBottom="16dp" />
-
-        <Button
-            android:id="@+id/btnHomeSecondary"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:text="My Account"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="16dp" />
+            android:textColor="#173B57"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
 
         <TextView
             android:id="@+id/tvHomeProfile"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Account details will appear here."
-            android:textColor="#263746"
+            android:text="Discover rental properties and manage your viewing appointments."
             android:textSize="16sp"
-            android:padding="16dp"
-            android:background="#FFFFFF"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="24dp" />
+            android:textColor="#667788"
+            android:gravity="center"
+            android:lineSpacingExtra="5dp"
+            android:layout_marginBottom="32dp" />
+
+        <Button
+            android:id="@+id/btnHomePrimary"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Explore Properties"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#173B57" />
+
+        <Button
+            android:id="@+id/btnHomeSecondary"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="16dp"
+            android:text="My Viewings"
+            android:textSize="16sp"
+            android:textColor="#173B57"
+            android:backgroundTint="#DCE6EF" />
 
         <Button
             android:id="@+id/btnLogout"
             android:layout_width="match_parent"
             android:layout_height="56dp"
+            android:layout_marginTop="28dp"
             android:text="Log Out"
-            android:textColor="#173B57"
             android:textSize="16sp"
-            android:backgroundTint="#DCE5EC" />
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#B42318" />
 
     </LinearLayout>
-    ```
-
 </ScrollView>

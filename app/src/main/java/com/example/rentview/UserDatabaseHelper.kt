@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.content.ContentValues
 import android.content.Context
@@ -13,7 +13,7 @@ class UserDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "rentview.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 4
 
         // Users table
         const val TABLE_USERS = "users"
@@ -50,6 +50,28 @@ class UserDatabaseHelper(context: Context) :
         const val STATUS_PENDING = "PENDING"
         const val STATUS_APPROVED = "APPROVED"
         const val STATUS_REJECTED = "REJECTED"
+
+        // Property edit request table
+        const val TABLE_PROPERTY_EDITS = "property_edit_requests"
+        const val COL_EDIT_ID = "edit_id"
+        const val COL_EDIT_PROPERTY_ID = "property_id"
+        const val COL_EDIT_TITLE = "proposed_title"
+        const val COL_EDIT_LOCATION = "proposed_location"
+        const val COL_EDIT_RENT = "proposed_rent"
+        const val COL_EDIT_BEDROOMS = "proposed_bedrooms"
+        const val COL_EDIT_DESCRIPTION = "proposed_description"
+        const val COL_EDIT_STATUS = "edit_status"
+        const val COL_EDIT_CREATED_AT = "created_at"
+
+        // Photos submitted with proposed edits
+        const val TABLE_PROPERTY_EDIT_PHOTOS = "property_edit_photos"
+        const val COL_EDIT_PHOTO_ID = "edit_photo_id"
+        const val COL_EDIT_PHOTO_URI = "photo_uri"
+    }
+
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        db.setForeignKeyConstraintsEnabled(true)
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -69,6 +91,8 @@ class UserDatabaseHelper(context: Context) :
         db.execSQL(createUsersTable)
 
         createPropertyTables(db)
+
+        createPropertyEditTables(db)
     }
 
     private fun createPropertyTables(db: SQLiteDatabase) {
@@ -104,6 +128,40 @@ class UserDatabaseHelper(context: Context) :
 
         db.execSQL(createPhotosTable)
     }
+    private fun createPropertyEditTables(db: SQLiteDatabase) {
+
+        val createEditsTable = """
+        CREATE TABLE IF NOT EXISTS $TABLE_PROPERTY_EDITS (
+            $COL_EDIT_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            $COL_EDIT_PROPERTY_ID INTEGER NOT NULL,
+            $COL_EDIT_TITLE TEXT NOT NULL,
+            $COL_EDIT_LOCATION TEXT NOT NULL,
+            $COL_EDIT_RENT REAL NOT NULL,
+            $COL_EDIT_BEDROOMS INTEGER NOT NULL,
+            $COL_EDIT_DESCRIPTION TEXT NOT NULL,
+            $COL_EDIT_STATUS TEXT NOT NULL DEFAULT '$STATUS_PENDING',
+            $COL_EDIT_CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY ($COL_EDIT_PROPERTY_ID)
+                REFERENCES $TABLE_PROPERTIES($COL_PROPERTY_ID)
+                ON DELETE CASCADE
+        )
+    """.trimIndent()
+
+        db.execSQL(createEditsTable)
+
+        val createEditPhotosTable = """
+        CREATE TABLE IF NOT EXISTS $TABLE_PROPERTY_EDIT_PHOTOS (
+            $COL_EDIT_PHOTO_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            $COL_EDIT_ID INTEGER NOT NULL,
+            $COL_EDIT_PHOTO_URI TEXT NOT NULL,
+            FOREIGN KEY ($COL_EDIT_ID)
+                REFERENCES $TABLE_PROPERTY_EDITS($COL_EDIT_ID)
+                ON DELETE CASCADE
+        )
+    """.trimIndent()
+
+        db.execSQL(createEditPhotosTable)
+    }
 
     override fun onUpgrade(
         db: SQLiteDatabase,
@@ -132,6 +190,10 @@ class UserDatabaseHelper(context: Context) :
 
         if (oldVersion < 3) {
             createPropertyTables(db)
+        }
+
+        if (oldVersion < 4) {
+            createPropertyEditTables(db)
         }
     }
 
@@ -495,6 +557,325 @@ class UserDatabaseHelper(context: Context) :
         )
     }
 
+    /**
+     * Submit proposed changes to an existing property.
+     *
+     * The approved property row and its current photos are NOT changed here.
+     * The proposed details and any replacement photos are stored separately
+     * until an administrator approves the request.
+     *
+     * If photoUris is empty, the existing photos are retained when approved.
+     * If photoUris contains URIs, those photos replace the old set on approval.
+     *
+     * Returns the new edit request ID, or -1 if validation/ownership/pending
+     * request checks fail.
+     */
+    fun submitPropertyEdit(
+        ownerId: Long,
+        propertyId: Long,
+        title: String,
+        location: String,
+        rent: Double,
+        bedrooms: Int,
+        description: String,
+        photoUris: List<String>
+    ): Long {
+        if (title.isBlank() ||
+            location.isBlank() ||
+            rent <= 0.0 ||
+            bedrooms < 0 ||
+            description.isBlank()
+        ) {
+            return -1L
+        }
+
+        val db = writableDatabase
+        var editId = -1L
+
+        db.beginTransaction()
+        try {
+            // Confirm this property belongs to this owner and is approved.
+            val propertyCursor = db.query(
+                TABLE_PROPERTIES,
+                arrayOf(COL_PROPERTY_ID),
+                "$COL_PROPERTY_ID = ? AND $COL_OWNER_ID = ? AND $COL_PROPERTY_STATUS = ?",
+                arrayOf(
+                    propertyId.toString(),
+                    ownerId.toString(),
+                    STATUS_APPROVED
+                ),
+                null,
+                null,
+                null
+            )
+
+            val propertyIsEditable = propertyCursor.use { it.moveToFirst() }
+            if (!propertyIsEditable) {
+                return -1L
+            }
+
+            // Allow only one pending edit request per property.
+            val pendingCursor = db.query(
+                TABLE_PROPERTY_EDITS,
+                arrayOf(COL_EDIT_ID),
+                "$COL_EDIT_PROPERTY_ID = ? AND $COL_EDIT_STATUS = ?",
+                arrayOf(propertyId.toString(), STATUS_PENDING),
+                null,
+                null,
+                null
+            )
+
+            val alreadyHasPendingEdit = pendingCursor.use { it.moveToFirst() }
+            if (alreadyHasPendingEdit) {
+                return -1L
+            }
+
+            val values = ContentValues().apply {
+                put(COL_EDIT_PROPERTY_ID, propertyId)
+                put(COL_EDIT_TITLE, title.trim())
+                put(COL_EDIT_LOCATION, location.trim())
+                put(COL_EDIT_RENT, rent)
+                put(COL_EDIT_BEDROOMS, bedrooms)
+                put(COL_EDIT_DESCRIPTION, description.trim())
+                put(COL_EDIT_STATUS, STATUS_PENDING)
+            }
+
+            editId = db.insert(TABLE_PROPERTY_EDITS, null, values)
+            if (editId == -1L) {
+                return -1L
+            }
+
+            for (photoUri in photoUris.distinct()) {
+                if (photoUri.isBlank()) continue
+
+                val photoValues = ContentValues().apply {
+                    put(COL_EDIT_ID, editId)
+                    put(COL_EDIT_PHOTO_URI, photoUri)
+                }
+
+                if (db.insert(TABLE_PROPERTY_EDIT_PHOTOS, null, photoValues) == -1L) {
+                    return -1L
+                }
+            }
+
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+
+        return editId
+    }
+
+    /**
+     * Get all pending property edit requests for the administrator.
+     * Includes property owner details for display in the admin screen.
+     */
+    fun getPendingPropertyEdits(): Cursor {
+        return readableDatabase.rawQuery(
+            """
+            SELECT
+                e.$COL_EDIT_ID,
+                e.$COL_EDIT_PROPERTY_ID,
+                e.$COL_EDIT_TITLE,
+                e.$COL_EDIT_LOCATION,
+                e.$COL_EDIT_RENT,
+                e.$COL_EDIT_BEDROOMS,
+                e.$COL_EDIT_DESCRIPTION,
+                e.$COL_EDIT_STATUS,
+                e.$COL_EDIT_CREATED_AT,
+                p.$COL_PROPERTY_TITLE AS current_title,
+                p.$COL_PROPERTY_LOCATION AS current_location,
+                p.$COL_PROPERTY_RENT AS current_rent,
+                p.$COL_PROPERTY_BEDROOMS AS current_bedrooms,
+                p.$COL_PROPERTY_DESCRIPTION AS current_description,
+                u.$COL_NAME AS owner_name,
+                u.$COL_EMAIL AS owner_email
+            FROM $TABLE_PROPERTY_EDITS e
+            INNER JOIN $TABLE_PROPERTIES p
+                ON e.$COL_EDIT_PROPERTY_ID = p.$COL_PROPERTY_ID
+            INNER JOIN $TABLE_USERS u
+                ON p.$COL_OWNER_ID = u.$COL_ID
+            WHERE e.$COL_EDIT_STATUS = ?
+            ORDER BY e.$COL_EDIT_CREATED_AT ASC
+            """.trimIndent(),
+            arrayOf(STATUS_PENDING)
+        )
+    }
+
+    /** Get the proposed photo URIs for one edit request. */
+    fun getPropertyEditPhotos(editId: Long): Cursor {
+        return readableDatabase.query(
+            TABLE_PROPERTY_EDIT_PHOTOS,
+            arrayOf(COL_EDIT_PHOTO_URI),
+            "$COL_EDIT_ID = ?",
+            arrayOf(editId.toString()),
+            null,
+            null,
+            "$COL_EDIT_PHOTO_ID ASC"
+        )
+    }
+
+    /**
+     * Approve or reject an edit request.
+     *
+     * On approval, proposed details replace the property's current details.
+     * Proposed photos replace the current photos only if the request contains
+     * at least one proposed photo. On rejection, the property remains unchanged.
+     */
+    fun reviewPropertyEdit(editId: Long, decision: String): Boolean {
+        if (decision != STATUS_APPROVED && decision != STATUS_REJECTED) {
+            return false
+        }
+
+        val db = writableDatabase
+        var success = false
+
+        db.beginTransaction()
+        try {
+            val editCursor = db.query(
+                TABLE_PROPERTY_EDITS,
+                arrayOf(
+                    COL_EDIT_PROPERTY_ID,
+                    COL_EDIT_TITLE,
+                    COL_EDIT_LOCATION,
+                    COL_EDIT_RENT,
+                    COL_EDIT_BEDROOMS,
+                    COL_EDIT_DESCRIPTION
+                ),
+                "$COL_EDIT_ID = ? AND $COL_EDIT_STATUS = ?",
+                arrayOf(editId.toString(), STATUS_PENDING),
+                null,
+                null,
+                null
+            )
+
+            val edit = editCursor.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    arrayOf(
+                        cursor.getLong(0).toString(),
+                        cursor.getString(1),
+                        cursor.getString(2),
+                        cursor.getDouble(3).toString(),
+                        cursor.getInt(4).toString(),
+                        cursor.getString(5)
+                    )
+                }
+            } ?: return false
+
+            val propertyId = edit[0].toLong()
+
+            if (decision == STATUS_APPROVED) {
+                val propertyValues = ContentValues().apply {
+                    put(COL_PROPERTY_TITLE, edit[1])
+                    put(COL_PROPERTY_LOCATION, edit[2])
+                    put(COL_PROPERTY_RENT, edit[3].toDouble())
+                    put(COL_PROPERTY_BEDROOMS, edit[4].toInt())
+                    put(COL_PROPERTY_DESCRIPTION, edit[5])
+                }
+
+                val updatedRows = db.update(
+                    TABLE_PROPERTIES,
+                    propertyValues,
+                    "$COL_PROPERTY_ID = ? AND $COL_PROPERTY_STATUS = ?",
+                    arrayOf(propertyId.toString(), STATUS_APPROVED)
+                )
+
+                if (updatedRows != 1) {
+                    return false
+                }
+
+                // Use proposed photos as a replacement set only when supplied.
+                val proposedPhotoCursor = db.query(
+                    TABLE_PROPERTY_EDIT_PHOTOS,
+                    arrayOf(COL_EDIT_PHOTO_URI),
+                    "$COL_EDIT_ID = ?",
+                    arrayOf(editId.toString()),
+                    null,
+                    null,
+                    "$COL_EDIT_PHOTO_ID ASC"
+                )
+
+                val proposedPhotoUris = proposedPhotoCursor.use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(cursor.getString(0))
+                        }
+                    }
+                }
+
+                if (proposedPhotoUris.isNotEmpty()) {
+                    db.delete(
+                        TABLE_PROPERTY_PHOTOS,
+                        "$COL_PROPERTY_ID = ?",
+                        arrayOf(propertyId.toString())
+                    )
+
+                    for (photoUri in proposedPhotoUris) {
+                        val photoValues = ContentValues().apply {
+                            put(COL_PROPERTY_ID, propertyId)
+                            put(COL_PHOTO_URI, photoUri)
+                        }
+
+                        if (db.insert(TABLE_PROPERTY_PHOTOS, null, photoValues) == -1L) {
+                            return false
+                        }
+                    }
+                }
+            }
+
+            val requestValues = ContentValues().apply {
+                put(COL_EDIT_STATUS, decision)
+            }
+
+            val updatedRequestRows = db.update(
+                TABLE_PROPERTY_EDITS,
+                requestValues,
+                "$COL_EDIT_ID = ? AND $COL_EDIT_STATUS = ?",
+                arrayOf(editId.toString(), STATUS_PENDING)
+            )
+
+            if (updatedRequestRows != 1) {
+                return false
+            }
+
+            db.setTransactionSuccessful()
+            success = true
+        } finally {
+            db.endTransaction()
+        }
+
+        return success
+    }
+
+    /** Convenience wrappers for the administrator review buttons. */
+    fun approvePropertyEdit(editId: Long): Boolean {
+        return reviewPropertyEdit(editId, STATUS_APPROVED)
+    }
+
+    fun rejectPropertyEdit(editId: Long): Boolean {
+        return reviewPropertyEdit(editId, STATUS_REJECTED)
+    }
+
+    /** Find the pending edit request for a property, if one exists. */
+    fun getPendingPropertyEditId(propertyId: Long): Long? {
+        val cursor = readableDatabase.query(
+            TABLE_PROPERTY_EDITS,
+            arrayOf(COL_EDIT_ID),
+            "$COL_EDIT_PROPERTY_ID = ? AND $COL_EDIT_STATUS = ?",
+            arrayOf(propertyId.toString(), STATUS_PENDING),
+            null,
+            null,
+            "$COL_EDIT_CREATED_AT ASC",
+            "1"
+        )
+
+        return cursor.use {
+            if (it.moveToFirst()) it.getLong(0) else null
+        }
+    }
+
     // Hash the password before storing or checking it.
     private fun hashPassword(password: String): String {
 
@@ -506,4 +887,3 @@ class UserDatabaseHelper(context: Context) :
         }
     }
 }
-

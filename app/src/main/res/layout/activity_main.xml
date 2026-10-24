@@ -9,7 +9,6 @@
     android:padding="28dp"
     android:background="#F5F7FA">
 
-    ```
     <TextView
         android:id="@+id/tvAppName"
         android:layout_width="wrap_content"
@@ -61,6 +60,5 @@
         android:textSize="16sp"
         android:textColor="#173B57"
         android:backgroundTint="#DCE6EF" />
-    ```
 
 </LinearLayout>

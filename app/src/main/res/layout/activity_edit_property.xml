@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Edit Property"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Property Title" />
+
+        <EditText
+            android:id="@+id/editPropertyTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter property title"
+            android:inputType="textCapSentences"
+            android:minHeight="48dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Location"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/editPropertyLocation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter property location"
+            android:inputType="textCapSentences"
+            android:minHeight="48dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Monthly Rent (KES)"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/editPropertyRent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter monthly rent"
+            android:inputType="numberDecimal"
+            android:minHeight="48dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Number of Bedrooms"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/editPropertyBedrooms"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter number of bedrooms"
+            android:inputType="number"
+            android:minHeight="48dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Description"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/editPropertyDescription"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:gravity="top|start"
+            android:hint="Describe the property"
+            android:inputType="textMultiLine|textCapSentences"
+            android:minHeight="100dp" />
+
+        <Button
+            android:id="@+id/btnSubmitPropertyEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:minHeight="52dp"
+            android:text="Submit Changes for Approval" />
+
+    </LinearLayout>
+
+</ScrollView>
