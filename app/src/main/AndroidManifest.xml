@@ -16,6 +16,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".PropertyApprovalsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".AdminLoginActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
@@ -27,10 +31,14 @@
         <activity
             android:name=".OwnerApprovalsActivity"
             android:exported="false" />
+        <activity
+            android:name=".EditPropertyActivity"
+            android:exported="false" />
 
         <activity
             android:name=".AddPropertyActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".LoginActivity"
@@ -41,6 +49,10 @@
             android:name=".RegisterActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".MyPropertiesActivity"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

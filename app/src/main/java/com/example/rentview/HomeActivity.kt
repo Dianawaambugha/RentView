@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.os.Bundle
 import android.widget.Button
@@ -45,7 +45,10 @@ class HomeActivity : AppCompatActivity() {
 // Open the Add Property screen for property owners
         primaryButton.setOnClickListener {
             if (role == "Property Owner") {
+                val userId = intent.getLongExtra("USER_ID", -1L)
+
                 val addPropertyIntent = Intent(this, AddPropertyActivity::class.java)
+                addPropertyIntent.putExtra("USER_ID", userId)
                 startActivity(addPropertyIntent)
             } else {
                 Toast.makeText(
@@ -55,14 +58,34 @@ class HomeActivity : AppCompatActivity() {
                 ).show()
             }
         }
-
         secondaryButton.setOnClickListener {
-            Toast.makeText(
-                this,
-                "This feature will be added next.",
-                Toast.LENGTH_SHORT
-            ).show()
+            if (role == "Property Owner") {
+                val userId = intent.getLongExtra("USER_ID", -1L)
+
+                if (userId != -1L) {
+                    val propertiesIntent = Intent(
+                        this,
+                        MyPropertiesActivity::class.java
+                    )
+
+                    propertiesIntent.putExtra("USER_ID", userId)
+                    startActivity(propertiesIntent)
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Unable to identify the property owner.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } else {
+                Toast.makeText(
+                    this,
+                    "My Viewings will be implemented next.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
+
 
         // Log out and return to the welcome screen
         logoutButton.setOnClickListener {

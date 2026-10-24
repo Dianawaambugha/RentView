@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.os.Bundle
 import android.content.Intent
@@ -18,9 +18,13 @@ class AdminDashboardActivity : AppCompatActivity() {
             val intent = Intent(this, OwnerApprovalsActivity::class.java)
             startActivity(intent)
         }
-
         propertyButton.setOnClickListener {
-            // Property approval screen will be connected next.
+            val intent = Intent(
+                this,
+                PropertyApprovalsActivity::class.java
+            )
+
+            startActivity(intent)
         }
     }
 }

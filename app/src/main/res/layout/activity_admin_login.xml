@@ -67,7 +67,7 @@
             android:id="@+id/btnAdminLogin"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Administrator Sign In"
+            android:text="Administrator Log In"
             android:textAllCaps="false"
             android:padding="12dp" />
 
