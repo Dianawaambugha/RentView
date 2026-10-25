@@ -13,18 +13,7 @@ class UserDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "rentview.db"
-        private const val DATABASE_VERSION = 4
-
-        @Volatile
-        private var instance: UserDatabaseHelper? = null
-
-        // One shared helper for the whole app, so every screen uses the same database connection.
-        fun getInstance(context: Context): UserDatabaseHelper {
-            return instance ?: synchronized(this) {
-                instance ?: UserDatabaseHelper(context.applicationContext)
-                    .also { instance = it }
-            }
-        }
+        private const val DATABASE_VERSION = 3
 
         // Users table
         const val TABLE_USERS = "users"
@@ -53,13 +42,6 @@ class UserDatabaseHelper(context: Context) :
         const val COL_PHOTO_ID = "photo_id"
         const val COL_PHOTO_URI = "photo_uri"
 
-        // Viewings table
-        const val TABLE_VIEWINGS = "viewings"
-        const val COL_VIEWING_ID = "viewing_id"
-        const val COL_TENANT_ID = "tenant_id"
-        const val COL_VIEWING_DATE = "viewing_date"
-        const val COL_VIEWING_SLOT = "viewing_slot"
-
         // Roles
         const val ROLE_TENANT = "Tenant"
         const val ROLE_OWNER = "Property Owner"
@@ -87,7 +69,6 @@ class UserDatabaseHelper(context: Context) :
         db.execSQL(createUsersTable)
 
         createPropertyTables(db)
-        createViewingsTable(db)
     }
 
     private fun createPropertyTables(db: SQLiteDatabase) {
@@ -124,34 +105,6 @@ class UserDatabaseHelper(context: Context) :
         db.execSQL(createPhotosTable)
     }
 
-    private fun createViewingsTable(db: SQLiteDatabase) {
-
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS $TABLE_VIEWINGS (
-                $COL_VIEWING_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                $COL_PROPERTY_ID INTEGER NOT NULL,
-                $COL_TENANT_ID INTEGER NOT NULL,
-                $COL_VIEWING_DATE TEXT NOT NULL,
-                $COL_VIEWING_SLOT TEXT NOT NULL,
-                FOREIGN KEY ($COL_PROPERTY_ID)
-                    REFERENCES $TABLE_PROPERTIES($COL_PROPERTY_ID),
-                FOREIGN KEY ($COL_TENANT_ID)
-                    REFERENCES $TABLE_USERS($COL_ID)
-            )
-            """.trimIndent()
-        )
-
-        // One booking per property, date and slot. This is what makes
-        // insertViewing() return -1 if two people grab the same slot.
-        db.execSQL(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_viewing_unique_slot
-            ON $TABLE_VIEWINGS ($COL_PROPERTY_ID, $COL_VIEWING_DATE, $COL_VIEWING_SLOT)
-            """.trimIndent()
-        )
-    }
-
     override fun onUpgrade(
         db: SQLiteDatabase,
         oldVersion: Int,
@@ -179,10 +132,6 @@ class UserDatabaseHelper(context: Context) :
 
         if (oldVersion < 3) {
             createPropertyTables(db)
-        }
-
-        if (oldVersion < 4) {
-            createViewingsTable(db)
         }
     }
 
@@ -546,239 +495,6 @@ class UserDatabaseHelper(context: Context) :
         )
     }
 
-    // Retrieve a single house by its id.
-    fun getPropertyById(propertyId: Long): Cursor {
-
-        return readableDatabase.query(
-            TABLE_PROPERTIES,
-            arrayOf(
-                COL_PROPERTY_ID,
-                COL_OWNER_ID,
-                COL_PROPERTY_TITLE,
-                COL_PROPERTY_LOCATION,
-                COL_PROPERTY_RENT,
-                COL_PROPERTY_BEDROOMS,
-                COL_PROPERTY_DESCRIPTION,
-                COL_PROPERTY_STATUS
-            ),
-            "$COL_PROPERTY_ID = ?",
-            arrayOf(propertyId.toString()),
-            null,
-            null,
-            null
-        )
-    }
-
-    // Testing only: inserts a few APPROVED sample houses.
-    // Does nothing if properties already exist. Returns the number inserted.
-    fun seedSampleProperties(): Int {
-
-        val db = writableDatabase
-        var inserted = 0
-
-        db.beginTransaction()
-
-        try {
-
-            val existing = db.query(
-                TABLE_PROPERTIES,
-                arrayOf(COL_PROPERTY_ID),
-                null, null, null, null, null,
-                "1"
-            ).use { it.moveToFirst() }
-
-            if (existing) return 0
-
-            // Find an owner to attach the samples to.
-            var ownerId = -1L
-            db.query(
-                TABLE_USERS,
-                arrayOf(COL_ID),
-                "$COL_ROLE = ?",
-                arrayOf(ROLE_OWNER),
-                null, null, null,
-                "1"
-            ).use {
-                if (it.moveToFirst()) ownerId = it.getLong(0)
-            }
-
-            // No owner yet, so create a sample one.
-            if (ownerId == -1L) {
-                val ownerValues = ContentValues().apply {
-                    put(COL_NAME, "Sample Owner")
-                    put(COL_EMAIL, "sample.owner@rentview.test")
-                    put(COL_PHONE, "0700000000")
-                    put(COL_PASSWORD, hashPassword("sample123"))
-                    put(COL_ROLE, ROLE_OWNER)
-                    put(COL_APPROVAL_STATUS, STATUS_APPROVED)
-                }
-                ownerId = db.insert(TABLE_USERS, null, ownerValues)
-            }
-
-            if (ownerId == -1L) return 0
-
-            val samples = listOf(
-                Triple("2BR Apartment in Kilimani", "Kilimani, Nairobi", 65000.0),
-                Triple("Bedsitter near Strathmore", "Madaraka, Nairobi", 15000.0),
-                Triple("3BR Maisonette", "Lavington, Nairobi", 120000.0)
-            )
-
-            for ((title, location, rent) in samples) {
-                val values = ContentValues().apply {
-                    put(COL_OWNER_ID, ownerId)
-                    put(COL_PROPERTY_TITLE, title)
-                    put(COL_PROPERTY_LOCATION, location)
-                    put(COL_PROPERTY_RENT, rent)
-                    put(COL_PROPERTY_BEDROOMS, 2)
-                    put(COL_PROPERTY_DESCRIPTION, "Sample listing for testing")
-                    put(COL_PROPERTY_STATUS, STATUS_APPROVED)
-                }
-                if (db.insert(TABLE_PROPERTIES, null, values) != -1L) inserted++
-            }
-
-            db.setTransactionSuccessful()
-
-        } finally {
-            db.endTransaction()
-        }
-
-        return inserted
-    }
-
-    // Slots already booked for a property on a date (column 0 = slot).
-    fun getBookedSlots(
-        propertyId: Long,
-        date: String,
-        excludeViewingId: Long
-    ): Cursor {
-
-        return readableDatabase.query(
-            TABLE_VIEWINGS,
-            arrayOf(COL_VIEWING_SLOT),
-            "$COL_PROPERTY_ID = ? AND $COL_VIEWING_DATE = ? AND $COL_VIEWING_ID != ?",
-            arrayOf(propertyId.toString(), date, excludeViewingId.toString()),
-            null,
-            null,
-            null
-        )
-    }
-
-    // Does this tenant already have any viewing at that date and slot?
-    fun tenantHasViewingAt(
-        tenantId: Long,
-        date: String,
-        slot: String,
-        excludeViewingId: Long
-    ): Boolean {
-
-        return readableDatabase.query(
-            TABLE_VIEWINGS,
-            arrayOf(COL_VIEWING_ID),
-            "$COL_TENANT_ID = ? AND $COL_VIEWING_DATE = ? " +
-                    "AND $COL_VIEWING_SLOT = ? AND $COL_VIEWING_ID != ?",
-            arrayOf(tenantId.toString(), date, slot, excludeViewingId.toString()),
-            null,
-            null,
-            null
-        ).use { it.moveToFirst() }
-    }
-
-    // Returns the new viewing id, or -1 if the slot was just taken.
-    fun insertViewing(
-        propertyId: Long,
-        tenantId: Long,
-        date: String,
-        slot: String
-    ): Long {
-
-        val values = ContentValues().apply {
-            put(COL_PROPERTY_ID, propertyId)
-            put(COL_TENANT_ID, tenantId)
-            put(COL_VIEWING_DATE, date)
-            put(COL_VIEWING_SLOT, slot)
-        }
-
-        return writableDatabase.insert(TABLE_VIEWINGS, null, values)
-    }
-
-    // Move a viewing to a new date and slot. False if nothing changed.
-    fun updateViewing(
-        viewingId: Long,
-        tenantId: Long,
-        date: String,
-        slot: String
-    ): Boolean {
-
-        val values = ContentValues().apply {
-            put(COL_VIEWING_DATE, date)
-            put(COL_VIEWING_SLOT, slot)
-        }
-
-        val rows = writableDatabase.updateWithOnConflict(
-            TABLE_VIEWINGS,
-            values,
-            "$COL_VIEWING_ID = ? AND $COL_TENANT_ID = ?",
-            arrayOf(viewingId.toString(), tenantId.toString()),
-            SQLiteDatabase.CONFLICT_IGNORE
-        )
-
-        return rows > 0
-    }
-
-    // Cancel a viewing. Only the tenant who booked it can delete it.
-    fun deleteViewing(viewingId: Long, tenantId: Long): Boolean {
-
-        val rows = writableDatabase.delete(
-            TABLE_VIEWINGS,
-            "$COL_VIEWING_ID = ? AND $COL_TENANT_ID = ?",
-            arrayOf(viewingId.toString(), tenantId.toString())
-        )
-
-        return rows > 0
-    }
-
-    // All viewings for a tenant, joined with the property details.
-    fun getTenantViewings(tenantId: Long): Cursor {
-
-        return readableDatabase.rawQuery(
-            """
-            SELECT
-                v.$COL_VIEWING_ID,
-                v.$COL_PROPERTY_ID,
-                p.$COL_PROPERTY_TITLE,
-                p.$COL_PROPERTY_LOCATION,
-                v.$COL_VIEWING_DATE,
-                v.$COL_VIEWING_SLOT
-            FROM $TABLE_VIEWINGS v
-            INNER JOIN $TABLE_PROPERTIES p
-                ON v.$COL_PROPERTY_ID = p.$COL_PROPERTY_ID
-            WHERE v.$COL_TENANT_ID = ?
-            """.trimIndent(),
-            arrayOf(tenantId.toString())
-        )
-    }
-
-    // One viewing, with property details. Scoped to the tenant.
-    fun getViewingById(viewingId: Long, tenantId: Long): Cursor {
-
-        return readableDatabase.rawQuery(
-            """
-            SELECT
-                v.$COL_VIEWING_ID,
-                v.$COL_PROPERTY_ID,
-                p.$COL_PROPERTY_TITLE,
-                p.$COL_PROPERTY_LOCATION,
-                v.$COL_VIEWING_DATE,
-                v.$COL_VIEWING_SLOT
-            FROM $TABLE_VIEWINGS v
-            INNER JOIN $TABLE_PROPERTIES p
-                ON v.$COL_PROPERTY_ID = p.$COL_PROPERTY_ID
-            WHERE v.$COL_VIEWING_ID = ? AND v.$COL_TENANT_ID = ?
-            """.trimIndent(),
-            arrayOf(viewingId.toString(), tenantId.toString())
-        )
-    }
-
     // Hash the password before storing or checking it.
     private fun hashPassword(password: String): String {
 
@@ -790,3 +506,4 @@ class UserDatabaseHelper(context: Context) :
         }
     }
 }
+

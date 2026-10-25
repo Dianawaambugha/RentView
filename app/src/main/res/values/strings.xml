@@ -1,8 +1,46 @@
 <resources>
-    <string name="app_name">RentVew</string>
+    <string name="app_name">RentView</string>
+
+    <string name="home_title">RentView</string>
+    <string name="welcome_message">Welcome!</string>
+    <string name="your_account">Your account</string>
+    <string name="your_dashboard">Your Dashboard</string>
+    <string name="explore_properties">Explore Properties</string>
+    <string name="my_account">My Account</string>
+    <string name="account_details">Account details will appear here.</string>
+    <string name="home_description">Discover rental properties, explore available homes, and schedule viewings with ease.</string>
+    <string name="get_started">Get Started</string>
+    <string name="admin_login">Administrator Login</string>
+    <string name="log_out">Log Out</string>
+
+    <!-- Edit Property Screen -->
+    <string name="edit_property_title">Edit Property</string>
+    <string name="property_title_label">Property Title</string>
+    <string name="enter_property_title">Enter property title</string>
+    <string name="property_location_label">Location</string>
+    <string name="enter_property_location">Enter property location</string>
+    <string name="monthly_rent_label">Monthly Rent (KES)</string>
+    <string name="enter_monthly_rent">Enter monthly rent</string>
+    <string name="number_of_bedrooms_label">Number of Bedrooms</string>
+    <string name="enter_number_of_bedrooms">Enter number of bedrooms</string>
+    <string name="property_description_label">Description</string>
+    <string name="describe_property">Describe the property</string>
+    <string name="submit_property_changes">Submit Changes for Approval</string>
+
+    <!-- My Properties Screen -->
+    <string name="owner_not_identified">Unable to identify the property owner.</string>
+    <string name="my_properties_title">My Properties</string>
+    <string name="property_card_details">%1$s\n\nLocation: %2$s\nMonthly Rent: KSh %3$s\nBedrooms: %4$d\n\nDescription:\n%5$s\n\nApproval Status: %6$s</string>
+    <string name="edit_property">Edit Property</string>
+    <string name="property_edit_pending">This property already has an edit awaiting admin approval.</string>
+    <string name="my_properties_empty">You have not added any properties yet.</string>
+    <string name="back_to_dashboard">Back to Dashboard</string>
+
+    <!-- User Roles -->
     <string-array name="user_roles">
         <item>Select your role</item>
         <item>Tenant</item>
         <item>Property Owner</item>
     </string-array>
+
 </resources>
