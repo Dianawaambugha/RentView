@@ -1,4 +1,4 @@
-package com.example.rentvew.ui
+package com.example.rentview.ui
 
 import android.view.LayoutInflater
 import android.view.View
@@ -8,9 +8,9 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.example.rentvew.R
-import com.example.rentvew.data.ViewingItem
-import com.example.rentvew.data.ViewingTime
+import com.example.rentview.R
+import com.example.rentview.data.ViewingItem
+import com.example.rentview.data.ViewingTime
 
 // Shows the tenant's booked viewings, each with Reschedule and Cancel buttons.
 class ViewingAdapter(

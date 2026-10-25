@@ -1,13 +1,13 @@
-package com.example.rentvew.viewmodel
+package com.example.rentview.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentvew.UserDatabaseHelper
-import com.example.rentvew.data.BookingResult
-import com.example.rentvew.data.PropertyRepository
-import com.example.rentvew.data.ViewingRepository
-import com.example.rentvew.work.ViewingReminders
+import com.example.rentview.UserDatabaseHelper
+import com.example.rentview.data.BookingResult
+import com.example.rentview.data.PropertyRepository
+import com.example.rentview.data.ViewingRepository
+import com.example.rentview.work.ViewingReminders
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update

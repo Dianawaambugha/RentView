@@ -1,0 +1,457 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index e84f345..89d3db1 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -29,6 +29,11 @@ dependencies {
+     implementation(libs.androidx.core.ktx)
+     implementation(libs.material)
+ 
++    // Viewing feature: list screens, ViewModels/coroutines and reminders
++    implementation("androidx.recyclerview:recyclerview:1.4.0")
++    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
++    implementation("androidx.work:work-runtime-ktx:2.10.0")
++
+     testImplementation(libs.junit)
+     androidTestImplementation(libs.androidx.espresso.core)
+     androidTestImplementation(libs.androidx.junit)
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 56c46d5..78940f2 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -1,6 +1,9 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
++    <!-- Android 13+: needed to show viewing reminder notifications -->
++    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++
+     <application
+         android:allowBackup="true"
+         android:dataExtractionRules="@xml/data_extraction_rules"
+@@ -32,6 +35,22 @@
+             android:name=".AddPropertyActivity"
+             android:exported="false" />
+ 
++        <activity
++            android:name=".PropertyListActivity"
++            android:exported="false" />
++
++        <activity
++            android:name=".PropertyDetailsActivity"
++            android:exported="false" />
++
++        <activity
++            android:name=".ScheduleViewingActivity"
++            android:exported="false" />
++
++        <activity
++            android:name=".MyViewingsActivity"
++            android:exported="false" />
++
+         <activity
+             android:name=".LoginActivity"
+             android:exported="false"
+diff --git a/app/src/main/java/com/example/rentvew/HomeActivity.kt b/app/src/main/java/com/example/rentvew/HomeActivity.kt
+index 68ba4a0..61548db 100644
+--- a/app/src/main/java/com/example/rentvew/HomeActivity.kt
++++ b/app/src/main/java/com/example/rentvew/HomeActivity.kt
+@@ -25,6 +25,7 @@ class HomeActivity : AppCompatActivity() {
+         // Read the user's details passed from the login screen
+         val userName = intent.getStringExtra("USER_NAME") ?: "User"
+         val role = intent.getStringExtra("USER_ROLE") ?: "Tenant"
++        val userId = intent.getLongExtra("USER_ID", -1L)
+ 
+         // Display the user's name and role
+         greeting.text = "Welcome, $userName!"
+@@ -48,22 +49,28 @@ class HomeActivity : AppCompatActivity() {
+                 val addPropertyIntent = Intent(this, AddPropertyActivity::class.java)
+                 startActivity(addPropertyIntent)
+             } else {
++                // Tenants browse the approved properties.
++                val propertyListIntent = Intent(this, PropertyListActivity::class.java)
++                propertyListIntent.putExtra("USER_ID", userId)
++                startActivity(propertyListIntent)
++            }
++        }
++
++        secondaryButton.setOnClickListener {
++            if (role == "Property Owner") {
+                 Toast.makeText(
+                     this,
+-                    "Property browsing will be added next.",
++                    "This feature will be added next.",
+                     Toast.LENGTH_SHORT
+                 ).show()
++            } else {
++                // Tenants see the viewings they have booked.
++                val myViewingsIntent = Intent(this, MyViewingsActivity::class.java)
++                myViewingsIntent.putExtra("USER_ID", userId)
++                startActivity(myViewingsIntent)
+             }
+         }
+ 
+-        secondaryButton.setOnClickListener {
+-            Toast.makeText(
+-                this,
+-                "This feature will be added next.",
+-                Toast.LENGTH_SHORT
+-            ).show()
+-        }
+-
+         // Log out and return to the welcome screen
+         logoutButton.setOnClickListener {
+             finish()
+diff --git a/app/src/main/java/com/example/rentvew/UserDatabaseHelper.kt b/app/src/main/java/com/example/rentvew/UserDatabaseHelper.kt
+index 277f132..ac5e150 100644
+--- a/app/src/main/java/com/example/rentvew/UserDatabaseHelper.kt
++++ b/app/src/main/java/com/example/rentvew/UserDatabaseHelper.kt
+@@ -13,7 +13,19 @@ class UserDatabaseHelper(context: Context) :
+ 
+     companion object {
+         private const val DATABASE_NAME = "rentview.db"
+-        private const val DATABASE_VERSION = 3
++        private const val DATABASE_VERSION = 4
++
++        // One shared helper for the viewing feature (ViewModels/repositories).
++        // The older activities still create their own instances, which is fine.
++        @Volatile
++        private var instance: UserDatabaseHelper? = null
++
++        fun getInstance(context: Context): UserDatabaseHelper {
++            return instance ?: synchronized(this) {
++                instance ?: UserDatabaseHelper(context.applicationContext)
++                    .also { instance = it }
++            }
++        }
+ 
+         // Users table
+         const val TABLE_USERS = "users"
+@@ -42,6 +54,13 @@ class UserDatabaseHelper(context: Context) :
+         const val COL_PHOTO_ID = "photo_id"
+         const val COL_PHOTO_URI = "photo_uri"
+ 
++        // Viewings table
++        const val TABLE_VIEWINGS = "viewings"
++        const val COL_VIEWING_ID = "viewing_id"
++        const val COL_VIEWING_TENANT_ID = "tenant_id"
++        const val COL_VIEWING_DATE = "viewing_date"   // yyyy-MM-dd
++        const val COL_VIEWING_SLOT = "time_slot"      // e.g. 10:00 AM
++
+         // Roles
+         const val ROLE_TENANT = "Tenant"
+         const val ROLE_OWNER = "Property Owner"
+@@ -69,6 +88,32 @@ class UserDatabaseHelper(context: Context) :
+         db.execSQL(createUsersTable)
+ 
+         createPropertyTables(db)
++        createViewingsTable(db)
++    }
++
++    // A property can only have one viewing per date and time slot (UNIQUE).
++    // Cancelling a viewing deletes its row, which frees the slot again.
++    private fun createViewingsTable(db: SQLiteDatabase) {
++
++        val createViewingsTable = """
++            CREATE TABLE IF NOT EXISTS $TABLE_VIEWINGS (
++                $COL_VIEWING_ID INTEGER PRIMARY KEY AUTOINCREMENT,
++                $COL_PROPERTY_ID INTEGER NOT NULL,
++                $COL_VIEWING_TENANT_ID INTEGER NOT NULL,
++                $COL_VIEWING_DATE TEXT NOT NULL,
++                $COL_VIEWING_SLOT TEXT NOT NULL,
++                $COL_CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++                UNIQUE ($COL_PROPERTY_ID, $COL_VIEWING_DATE, $COL_VIEWING_SLOT),
++                FOREIGN KEY ($COL_PROPERTY_ID)
++                    REFERENCES $TABLE_PROPERTIES($COL_PROPERTY_ID)
++                    ON DELETE CASCADE,
++                FOREIGN KEY ($COL_VIEWING_TENANT_ID)
++                    REFERENCES $TABLE_USERS($COL_ID)
++                    ON DELETE CASCADE
++            )
++        """.trimIndent()
++
++        db.execSQL(createViewingsTable)
+     }
+ 
+     private fun createPropertyTables(db: SQLiteDatabase) {
+@@ -133,6 +178,10 @@ class UserDatabaseHelper(context: Context) :
+         if (oldVersion < 3) {
+             createPropertyTables(db)
+         }
++
++        if (oldVersion < 4) {
++            createViewingsTable(db)
++        }
+     }
+ 
+     // Register a tenant or property owner.
+@@ -495,6 +544,270 @@ class UserDatabaseHelper(context: Context) :
+         )
+     }
+ 
++    // ------------------------------------------------------------
++    // Property lookups used by the tenant screens
++    // ------------------------------------------------------------
++
++    // Retrieve a single property by its ID.
++    fun getPropertyById(propertyId: Long): Cursor {
++
++        return readableDatabase.query(
++            TABLE_PROPERTIES,
++            arrayOf(
++                COL_PROPERTY_ID,
++                COL_OWNER_ID,
++                COL_PROPERTY_TITLE,
++                COL_PROPERTY_LOCATION,
++                COL_PROPERTY_RENT,
++                COL_PROPERTY_BEDROOMS,
++                COL_PROPERTY_DESCRIPTION,
++                COL_PROPERTY_STATUS
++            ),
++            "$COL_PROPERTY_ID = ?",
++            arrayOf(propertyId.toString()),
++            null,
++            null,
++            null
++        )
++    }
++
++    // ------------------------------------------------------------
++    // Viewings (create, read, update, delete)
++    // ------------------------------------------------------------
++
++    // Time slots already booked for a property on a date.
++    // Pass excludeViewingId when rescheduling so a viewing does not
++    // block its own slot. Use 0 when nothing should be excluded.
++    fun getBookedSlots(
++        propertyId: Long,
++        date: String,
++        excludeViewingId: Long
++    ): Cursor {
++
++        return readableDatabase.query(
++            TABLE_VIEWINGS,
++            arrayOf(COL_VIEWING_SLOT),
++            "$COL_PROPERTY_ID = ? AND $COL_VIEWING_DATE = ? AND $COL_VIEWING_ID != ?",
++            arrayOf(
++                propertyId.toString(),
++                date,
++                excludeViewingId.toString()
++            ),
++            null,
++            null,
++            null
++        )
++    }
++
++    // Does this tenant already have a viewing (at any property) at this time?
++    fun tenantHasViewingAt(
++        tenantId: Long,
++        date: String,
++        slot: String,
++        excludeViewingId: Long
++    ): Boolean {
++
++        val cursor = readableDatabase.query(
++            TABLE_VIEWINGS,
++            arrayOf(COL_VIEWING_ID),
++            "$COL_VIEWING_TENANT_ID = ? AND $COL_VIEWING_DATE = ? " +
++                    "AND $COL_VIEWING_SLOT = ? AND $COL_VIEWING_ID != ?",
++            arrayOf(
++                tenantId.toString(),
++                date,
++                slot,
++                excludeViewingId.toString()
++            ),
++            null,
++            null,
++            null
++        )
++
++        return cursor.use { it.moveToFirst() }
++    }
++
++    // CREATE: returns the new viewing ID, or -1 if the slot is already taken.
++    fun insertViewing(
++        propertyId: Long,
++        tenantId: Long,
++        date: String,
++        slot: String
++    ): Long {
++
++        val values = ContentValues().apply {
++            put(COL_PROPERTY_ID, propertyId)
++            put(COL_VIEWING_TENANT_ID, tenantId)
++            put(COL_VIEWING_DATE, date)
++            put(COL_VIEWING_SLOT, slot)
++        }
++
++        return try {
++            writableDatabase.insertOrThrow(TABLE_VIEWINGS, null, values)
++        } catch (e: SQLiteConstraintException) {
++            -1L
++        }
++    }
++
++    // READ: all viewings booked by one tenant, with the property details.
++    fun getTenantViewings(tenantId: Long): Cursor {
++
++        return readableDatabase.rawQuery(
++            """
++            SELECT
++                v.$COL_VIEWING_ID,
++                v.$COL_PROPERTY_ID,
++                v.$COL_VIEWING_DATE,
++                v.$COL_VIEWING_SLOT,
++                p.$COL_PROPERTY_TITLE,
++                p.$COL_PROPERTY_LOCATION
++            FROM $TABLE_VIEWINGS v
++            INNER JOIN $TABLE_PROPERTIES p
++                ON v.$COL_PROPERTY_ID = p.$COL_PROPERTY_ID
++            WHERE v.$COL_VIEWING_TENANT_ID = ?
++            """.trimIndent(),
++            arrayOf(tenantId.toString())
++        )
++    }
++
++    // READ: one viewing (only if it belongs to this tenant).
++    fun getViewingById(viewingId: Long, tenantId: Long): Cursor {
++
++        return readableDatabase.rawQuery(
++            """
++            SELECT
++                v.$COL_VIEWING_ID,
++                v.$COL_PROPERTY_ID,
++                v.$COL_VIEWING_DATE,
++                v.$COL_VIEWING_SLOT,
++                p.$COL_PROPERTY_TITLE,
++                p.$COL_PROPERTY_LOCATION
++            FROM $TABLE_VIEWINGS v
++            INNER JOIN $TABLE_PROPERTIES p
++                ON v.$COL_PROPERTY_ID = p.$COL_PROPERTY_ID
++            WHERE v.$COL_VIEWING_ID = ? AND v.$COL_VIEWING_TENANT_ID = ?
++            """.trimIndent(),
++            arrayOf(viewingId.toString(), tenantId.toString())
++        )
++    }
++
++    // UPDATE: move a viewing to another date/slot.
++    // Returns false if the slot is taken or the viewing was not found.
++    fun updateViewing(
++        viewingId: Long,
++        tenantId: Long,
++        date: String,
++        slot: String
++    ): Boolean {
++
++        val values = ContentValues().apply {
++            put(COL_VIEWING_DATE, date)
++            put(COL_VIEWING_SLOT, slot)
++        }
++
++        return try {
++            writableDatabase.update(
++                TABLE_VIEWINGS,
++                values,
++                "$COL_VIEWING_ID = ? AND $COL_VIEWING_TENANT_ID = ?",
++                arrayOf(viewingId.toString(), tenantId.toString())
++            ) > 0
++        } catch (e: SQLiteConstraintException) {
++            false
++        }
++    }
++
++    // DELETE: cancel a viewing. This frees the slot for other tenants.
++    fun deleteViewing(viewingId: Long, tenantId: Long): Boolean {
++
++        return writableDatabase.delete(
++            TABLE_VIEWINGS,
++            "$COL_VIEWING_ID = ? AND $COL_VIEWING_TENANT_ID = ?",
++            arrayOf(viewingId.toString(), tenantId.toString())
++        ) > 0
++    }
++
++    // ------------------------------------------------------------
++    // TESTING ONLY: sample properties so the tenant screens can be
++    // tried before owners have listed and the admin has approved
++    // real houses. Remove this (and its button) before submission.
++    // ------------------------------------------------------------
++    fun seedSampleProperties(): Int {
++
++        val sampleOwnerEmail = "sample.owner@rentview.test"
++        val db = writableDatabase
++        var inserted = 0
++
++        db.beginTransaction()
++
++        try {
++
++            val ownerValues = ContentValues().apply {
++                put(COL_NAME, "Sample Owner")
++                put(COL_EMAIL, sampleOwnerEmail)
++                put(COL_PHONE, "0700000000")
++                put(COL_PASSWORD, hashPassword("SampleOwner123"))
++                put(COL_ROLE, ROLE_OWNER)
++                put(COL_APPROVAL_STATUS, STATUS_APPROVED)
++            }
++
++            db.insertWithOnConflict(
++                TABLE_USERS,
++                null,
++                ownerValues,
++                SQLiteDatabase.CONFLICT_IGNORE
++            )
++
++            val ownerId = db.query(
++                TABLE_USERS,
++                arrayOf(COL_ID),
++                "$COL_EMAIL = ?",
++                arrayOf(sampleOwnerEmail),
++                null,
++                null,
++                null
++            ).use { if (it.moveToFirst()) it.getLong(0) else -1L }
++
++            if (ownerId == -1L) {
++                return 0
++            }
++
++            val samples = listOf(
++                arrayOf("Greenview Apartments - 2BR", "Kilimani", 45000.0, 2,
++                    "Bright two bedroom apartment with a balcony, parking and 24-hour security."),
++                arrayOf("Sunrise Court - Studio", "South B", 22000.0, 0,
++                    "Compact studio close to the matatu stage, with water and WiFi included."),
++                arrayOf("Palm Residency - 3BR", "Lavington", 75000.0, 3,
++                    "Spacious family home with a garden, a servant quarter and a borehole."),
++                arrayOf("Riverside Flats - 1BR", "Ngara", 30000.0, 1,
++                    "Quiet one bedroom flat near the shops, with tiled floors and good lighting.")
++            )
++
++            for (sample in samples) {
++
++                val values = ContentValues().apply {
++                    put(COL_OWNER_ID, ownerId)
++                    put(COL_PROPERTY_TITLE, sample[0] as String)
++                    put(COL_PROPERTY_LOCATION, sample[1] as String)
++                    put(COL_PROPERTY_RENT, sample[2] as Double)
++                    put(COL_PROPERTY_BEDROOMS, sample[3] as Int)
++                    put(COL_PROPERTY_DESCRIPTION, sample[4] as String)
++                    put(COL_PROPERTY_STATUS, STATUS_APPROVED)
++                }
++
++                if (db.insert(TABLE_PROPERTIES, null, values) != -1L) {
++                    inserted++
++                }
++            }
++
++            db.setTransactionSuccessful()
++
++        } finally {
++            db.endTransaction()
++        }
++
++        return inserted
++    }
++
+     // Hash the password before storing or checking it.
+     private fun hashPassword(password: String): String {
+ 
