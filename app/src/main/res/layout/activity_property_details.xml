@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7FA"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="RentView"
+            android:textColor="#173B57"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <ProgressBar
+            android:id="@+id/progressDetails"
+            style="?android:attr/progressBarStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="48dp" />
+
+        <TextView
+            android:id="@+id/tvDetailsError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="This property is no longer available."
+            android:textColor="#263746"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/layoutDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvDetailTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="Property title"
+                android:textColor="#173B57"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDetailLocation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:text="Location"
+                android:textColor="#757575"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tvDetailRent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="KES 45,000 / month"
+                android:textColor="#315D78"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDetailBedrooms"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:text="2 bedrooms"
+                android:textColor="#263746"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tvDetailDescription"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="#FFFFFF"
+                android:lineSpacingExtra="3dp"
+                android:padding="16dp"
+                android:text="Description"
+                android:textColor="#263746"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/tvDetailPhotos"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:text="No photos uploaded"
+                android:textColor="#757575"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnScheduleViewing"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:layout_marginBottom="12dp"
+                android:backgroundTint="#173B57"
+                android:text="Schedule a Viewing"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnDetailsBack"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="#DCE5EC"
+            android:text="Back"
+            android:textColor="#173B57"
+            android:textSize="16sp" />
+
+    </LinearLayout>
+
+</ScrollView>
