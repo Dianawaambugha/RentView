@@ -1,4 +1,4 @@
-package com.example.rentvew.ui
+package com.example.rentview.ui
 
 import android.view.LayoutInflater
 import android.view.View
@@ -7,8 +7,8 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.example.rentvew.R
-import com.example.rentvew.data.PropertyItem
+import com.example.rentview.R
+import com.example.rentview.data.PropertyItem
 
 // Shows the list of approved properties. RecyclerView only creates enough
 // card views to fill the screen and reuses them while the user scrolls.

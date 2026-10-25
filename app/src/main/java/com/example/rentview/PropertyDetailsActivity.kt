@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.content.Intent
 import android.os.Bundle
@@ -12,8 +12,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.example.rentvew.ui.Formatters
-import com.example.rentvew.viewmodel.PropertyDetailsViewModel
+import com.example.rentview.ui.Formatters
+import com.example.rentview.viewmodel.PropertyDetailsViewModel
 import kotlinx.coroutines.launch
 
 // Tenant screen: full details of one property, with a button to book a viewing.

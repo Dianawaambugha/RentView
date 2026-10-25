@@ -1,4 +1,4 @@
-package com.example.rentvew.data
+package com.example.rentview.data
 
 import java.text.SimpleDateFormat
 import java.util.Locale
