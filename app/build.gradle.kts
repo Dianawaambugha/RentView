@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.rentvew"
+    namespace = "com.example.rentview"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.rentvew"
+        applicationId = "com.example.rentview"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

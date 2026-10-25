@@ -1,175 +1,181 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F7FA"
-    android:fillViewport="true">
+    android:orientation="vertical"
+    android:background="#F5F7FA">
 
+    <!-- Scrollable form -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="RentView"
+                android:textColor="#173B57"
+                android:textSize="30sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Add a Property"
+                android:textColor="#173B57"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="List your rental property and help tenants find their next home."
+                android:textColor="#757575"
+                android:textSize="15sp"
+                android:layout_marginBottom="24dp" />
+
+            <EditText
+                android:id="@+id/etPropertyTitle"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:hint="Property name or title"
+                android:inputType="textCapSentences"
+                android:padding="12dp"
+                android:textColor="#263746"
+                android:textColorHint="#757575"
+                android:backgroundTint="#315D78"
+                android:layout_marginBottom="16dp" />
+
+            <EditText
+                android:id="@+id/etPropertyLocation"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:hint="Location, e.g. Kilimani, Nairobi"
+                android:inputType="textCapSentences"
+                android:padding="12dp"
+                android:textColor="#263746"
+                android:textColorHint="#757575"
+                android:backgroundTint="#315D78"
+                android:layout_marginBottom="16dp" />
+
+            <EditText
+                android:id="@+id/etPropertyRent"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:hint="Monthly rent (KES)"
+                android:inputType="numberDecimal"
+                android:padding="12dp"
+                android:textColor="#263746"
+                android:textColorHint="#757575"
+                android:backgroundTint="#315D78"
+                android:layout_marginBottom="16dp" />
+
+            <EditText
+                android:id="@+id/etPropertyBedrooms"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:hint="Number of bedrooms"
+                android:inputType="number"
+                android:padding="12dp"
+                android:textColor="#263746"
+                android:textColorHint="#757575"
+                android:backgroundTint="#315D78"
+                android:layout_marginBottom="16dp" />
+
+            <EditText
+                android:id="@+id/etPropertyDescription"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:hint="Describe the property and its features"
+                android:inputType="textCapSentences|textMultiLine"
+                android:gravity="top"
+                android:padding="12dp"
+                android:textColor="#263746"
+                android:textColorHint="#757575"
+                android:backgroundTint="#315D78"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Property Photos"
+                android:textColor="#173B57"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Add photos of the bedrooms, kitchen, bathroom, and exterior. Clear photos help tenants understand what the property looks like."
+                android:textColor="#757575"
+                android:textSize="14sp"
+                android:lineSpacingExtra="3dp"
+                android:layout_marginBottom="16dp" />
+
+            <Button
+                android:id="@+id/btnChoosePhotos"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Choose Property Photos"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:backgroundTint="#315D78"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/tvSelectedPhotos"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No photos selected"
+                android:textColor="#757575"
+                android:textSize="14sp"
+                android:padding="12dp"
+                android:background="#FFFFFF"
+                android:layout_marginBottom="16dp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Fixed bottom bar: always visible -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="#FFFFFF">
 
-        <!-- RentView branding -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="RentView"
-            android:textColor="#173B57"
-            android:textSize="30sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Screen heading -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Add a Property"
-            android:textColor="#173B57"
-            android:textSize="26sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="List your rental property and help tenants find their next home."
-            android:textColor="#757575"
-            android:textSize="15sp"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Property title -->
-        <EditText
-            android:id="@+id/etPropertyTitle"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:hint="Property name or title"
-            android:inputType="textCapSentences"
-            android:padding="12dp"
-            android:textColor="#263746"
-            android:textColorHint="#757575"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Property location -->
-        <EditText
-            android:id="@+id/etPropertyLocation"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:hint="Location, e.g. Kilimani, Nairobi"
-            android:inputType="textCapSentences"
-            android:padding="12dp"
-            android:textColor="#263746"
-            android:textColorHint="#757575"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Monthly rent -->
-        <EditText
-            android:id="@+id/etPropertyRent"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:hint="Monthly rent (KES)"
-            android:inputType="numberDecimal"
-            android:padding="12dp"
-            android:textColor="#263746"
-            android:textColorHint="#757575"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Number of bedrooms -->
-        <EditText
-            android:id="@+id/etPropertyBedrooms"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:hint="Number of bedrooms"
-            android:inputType="number"
-            android:padding="12dp"
-            android:textColor="#263746"
-            android:textColorHint="#757575"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Property description -->
-        <EditText
-            android:id="@+id/etPropertyDescription"
-            android:layout_width="match_parent"
-            android:layout_height="120dp"
-            android:hint="Describe the property and its features"
-            android:inputType="textCapSentences|textMultiLine"
-            android:gravity="top"
-            android:padding="12dp"
-            android:textColor="#263746"
-            android:textColorHint="#757575"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Property photos heading -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Property Photos"
-            android:textColor="#173B57"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Add photos of the bedrooms, kitchen, bathroom, and exterior. Clear photos help tenants understand what the property looks like."
-            android:textColor="#757575"
-            android:textSize="14sp"
-            android:lineSpacingExtra="3dp"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Choose photos button -->
-        <Button
-            android:id="@+id/btnChoosePhotos"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="Choose Property Photos"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:backgroundTint="#315D78"
-            android:layout_marginBottom="12dp" />
-
-        <!-- Selected photo count -->
-        <TextView
-            android:id="@+id/tvSelectedPhotos"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="No photos selected"
-            android:textColor="#757575"
-            android:textSize="14sp"
-            android:padding="12dp"
-            android:background="#FFFFFF"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Save property button -->
-        <Button
-            android:id="@+id/btnSaveProperty"
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:text="Save Property"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:backgroundTint="#173B57"
-            android:layout_marginBottom="12dp" />
-
-        <!-- Cancel button -->
         <Button
             android:id="@+id/btnCancelProperty"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="54dp"
+            android:layout_weight="1"
             android:text="Cancel"
+            android:textAllCaps="false"
             android:textColor="#173B57"
-            android:textSize="16sp"
-            android:backgroundTint="#DCE5EC" />
+            android:backgroundTint="#DCE5EC"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/btnSaveProperty"
+            android:layout_width="0dp"
+            android:layout_height="54dp"
+            android:layout_weight="1"
+            android:text="Save Property"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#173B57"
+            android:layout_marginStart="8dp" />
 
     </LinearLayout>
 
-</ScrollView>
-
+</LinearLayout>

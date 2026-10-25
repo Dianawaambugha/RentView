@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.content.Intent
 import android.os.Bundle

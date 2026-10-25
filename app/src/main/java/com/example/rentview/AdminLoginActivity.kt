@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.content.Intent
 import android.os.Bundle
@@ -32,7 +32,6 @@ class AdminLoginActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Temporary credentials for this prototype.
             val adminEmail = "admin@rentview.com"
             val adminPassword = "Admin@123"
 
@@ -40,21 +39,27 @@ class AdminLoginActivity : AppCompatActivity() {
                 emailValue.equals(adminEmail, ignoreCase = true) &&
                 passwordValue == adminPassword
             ) {
+                Toast.makeText(
+                    this,
+                    "Administrator login successful",
+                    Toast.LENGTH_SHORT
+                ).show()
+
                 val intent = Intent(
                     this,
                     AdminDashboardActivity::class.java
                 )
 
                 startActivity(intent)
-                finish()
 
             } else {
                 Toast.makeText(
                     this,
-                    "Invalid administrator credentials.",
+                    "Invalid administrator email or password",
                     Toast.LENGTH_LONG
                 ).show()
             }
         }
     }
+
 }
