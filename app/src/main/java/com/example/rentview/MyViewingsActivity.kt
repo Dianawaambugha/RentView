@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.content.Intent
 import android.os.Bundle
@@ -16,10 +16,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.rentvew.data.ViewingTime
-import com.example.rentvew.ui.ViewingAdapter
-import com.example.rentvew.viewmodel.MyViewingsState
-import com.example.rentvew.viewmodel.MyViewingsViewModel
+import com.example.rentview.data.ViewingTime
+import com.example.rentview.ui.ViewingAdapter
+import com.example.rentview.viewmodel.MyViewingsState
+import com.example.rentview.viewmodel.MyViewingsViewModel
 import kotlinx.coroutines.launch
 
 // Tenant screen: list of booked viewings, with reschedule and cancel.

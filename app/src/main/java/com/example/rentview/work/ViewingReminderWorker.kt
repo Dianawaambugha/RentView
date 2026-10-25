@@ -1,4 +1,4 @@
-package com.example.rentvew.work
+package com.example.rentview.work
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -12,7 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.example.rentvew.data.ViewingTime
+import com.example.rentview.data.ViewingTime
 
 // Runs in the background (started by WorkManager) and shows the reminder
 // notification for an upcoming viewing.

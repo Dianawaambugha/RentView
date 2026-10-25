@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.content.Intent
 import android.os.Bundle
@@ -14,9 +14,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.rentvew.ui.PropertyAdapter
-import com.example.rentvew.viewmodel.PropertyListState
-import com.example.rentvew.viewmodel.PropertyListViewModel
+import com.example.rentview.ui.PropertyAdapter
+import com.example.rentview.viewmodel.PropertyListState
+import com.example.rentview.viewmodel.PropertyListViewModel
 import kotlinx.coroutines.launch
 
 // Tenant screen: browse all approved properties.

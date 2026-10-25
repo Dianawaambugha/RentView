@@ -9,7 +9,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.RentVew">
+        android:theme="@style/Theme.rentview">
         <activity android:name=".PropertyListActivity" android:exported="false" />
         <activity android:name=".PropertyDetailsActivity" android:exported="false" />
         <activity android:name=".ScheduleViewingActivity" android:exported="false" />

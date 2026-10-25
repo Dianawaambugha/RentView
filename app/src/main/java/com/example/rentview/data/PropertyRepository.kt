@@ -1,7 +1,7 @@
-package com.example.rentvew.data
+package com.example.rentview.data
 
 import android.database.Cursor
-import com.example.rentvew.UserDatabaseHelper
+import com.example.rentview.UserDatabaseHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

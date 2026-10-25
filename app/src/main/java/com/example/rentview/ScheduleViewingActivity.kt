@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.Manifest
 import android.app.DatePickerDialog
@@ -21,8 +21,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.example.rentvew.data.ViewingTime
-import com.example.rentvew.viewmodel.ScheduleViewingViewModel
+import com.example.rentview.data.ViewingTime
+import com.example.rentview.viewmodel.ScheduleViewingViewModel
 import kotlinx.coroutines.launch
 import java.util.Calendar
 

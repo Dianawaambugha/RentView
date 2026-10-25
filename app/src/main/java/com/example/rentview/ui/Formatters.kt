@@ -1,4 +1,4 @@
-package com.example.rentvew.ui
+package com.example.rentview.ui
 
 import java.util.Locale
 
