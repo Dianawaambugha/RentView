@@ -1,9 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Base.Theme.RentVew" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.rentview" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Customize your light theme here. -->
         <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
     </style>
 
-    <style name="Theme.RentVew" parent="Base.Theme.RentVew" />
+    <style name="Theme.rentview" parent="Base.Theme.rentview" />
 </resources>

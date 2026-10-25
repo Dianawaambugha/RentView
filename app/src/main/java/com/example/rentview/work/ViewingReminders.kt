@@ -1,11 +1,11 @@
-package com.example.rentvew.work
+package com.example.rentview.work
 
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.example.rentvew.data.ViewingTime
+import com.example.rentview.data.ViewingTime
 import java.util.concurrent.TimeUnit
 
 // Schedules and cancels the "your viewing is in one hour" reminders.

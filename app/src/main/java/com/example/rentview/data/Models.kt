@@ -1,4 +1,4 @@
-package com.example.rentvew.data
+package com.example.rentview.data
 
 // A rental house as shown to tenants.
 data class PropertyItem(

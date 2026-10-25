@@ -1,4 +1,4 @@
-package com.example.rentvew
+package com.example.rentview
 
 import android.os.Bundle
 import android.widget.Button
