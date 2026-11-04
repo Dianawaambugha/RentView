@@ -5,16 +5,14 @@ import com.example.rentview.UserDatabaseHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// Repository for viewings. All the booking rules live here, so the screens
-// and ViewModels only have to react to a BookingResult.
+// Repository for viewings. All the booking rules live here.
 class ViewingRepository(
     private val database: UserDatabaseHelper,
     private val properties: PropertyRepository
 ) {
 
-    // Slots a tenant can still pick for a property on a date:
-    // not already booked, and not in the past.
-    // excludeViewingId is used when rescheduling (0 = nothing excluded).
+    // Get available slots for a property on a date.
+// Exclude a viewing when rescheduling.
     suspend fun getAvailableSlots(
         propertyId: Long,
         date: String,
@@ -37,7 +35,7 @@ class ViewingRepository(
         }
     }
 
-    // CREATE
+    // CREATE: Book a property viewing.
     suspend fun book(
         propertyId: Long,
         tenantId: Long,
@@ -53,6 +51,7 @@ class ViewingRepository(
         }
 
         val property = properties.getProperty(propertyId)
+
         if (property == null || !property.isApproved) {
             return@withContext BookingResult.PropertyUnavailable
         }
@@ -65,17 +64,26 @@ class ViewingRepository(
             return@withContext BookingResult.TenantBusy
         }
 
-        val viewingId = database.insertViewing(propertyId, tenantId, date, slot)
+        val viewingId = database.insertViewing(
+            propertyId,
+            tenantId,
+            date,
+            slot
+        )
 
         if (viewingId == -1L) {
-            // Another booking got this slot between our check and the insert.
             BookingResult.SlotTaken
         } else {
-            BookingResult.Success(viewingId, property.title, date, slot)
+            BookingResult.Success(
+                viewingId,
+                property.title,
+                date,
+                slot
+            )
         }
     }
 
-    // UPDATE
+    // UPDATE: Reschedule a viewing.
     suspend fun reschedule(
         viewingId: Long,
         tenantId: Long,
@@ -84,7 +92,9 @@ class ViewingRepository(
     ): BookingResult = withContext(Dispatchers.IO) {
 
         val existing = findViewing(viewingId, tenantId)
-            ?: return@withContext BookingResult.Failure("This viewing no longer exists.")
+            ?: return@withContext BookingResult.Failure(
+                "This viewing no longer exists."
+            )
 
         val slotTime = ViewingTime.toMillis(date, slot)
             ?: return@withContext BookingResult.Failure("Invalid date or time.")
@@ -102,71 +112,130 @@ class ViewingRepository(
         }
 
         if (database.updateViewing(viewingId, tenantId, date, slot)) {
-            BookingResult.Success(viewingId, existing.propertyTitle, date, slot)
+            BookingResult.Success(
+                viewingId,
+                existing.propertyTitle,
+                date,
+                slot
+            )
         } else {
             BookingResult.SlotTaken
         }
     }
 
-    // DELETE
-    suspend fun cancel(viewingId: Long, tenantId: Long): Boolean =
-        withContext(Dispatchers.IO) {
-            database.deleteViewing(viewingId, tenantId)
-        }
+    // DELETE: Cancel a viewing.
+    suspend fun cancel(
+        viewingId: Long,
+        tenantId: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+        database.deleteViewing(viewingId, tenantId)
+    }
 
-    // READ (list): soonest first.
-    suspend fun getViewings(tenantId: Long): List<ViewingItem> =
-        withContext(Dispatchers.IO) {
-            database.getTenantViewings(tenantId).use { cursor ->
-                val items = mutableListOf<ViewingItem>()
-                while (cursor.moveToNext()) {
-                    items.add(toViewing(cursor))
-                }
-                // Slots are stored as text ("1:00 PM" sorts before "10:00 AM"),
-                // so sort by the real date and time instead.
-                items.sortedBy {
-                    ViewingTime.toMillis(it.date, it.timeSlot) ?: Long.MAX_VALUE
-                }
+    // READ: Get a tenant's viewing requests, soonest first.
+    suspend fun getViewings(
+        tenantId: Long
+    ): List<ViewingItem> = withContext(Dispatchers.IO) {
+
+        getTenantViewings(tenantId).use { cursor ->
+            val items = mutableListOf<ViewingItem>()
+
+            while (cursor.moveToNext()) {
+                items.add(toViewing(cursor))
             }
-        }
 
-    // READ (one)
-    suspend fun getViewing(viewingId: Long, tenantId: Long): ViewingItem? =
-        withContext(Dispatchers.IO) {
-            findViewing(viewingId, tenantId)
-        }
-
-    private fun findViewing(viewingId: Long, tenantId: Long): ViewingItem? {
-        return database.getViewingById(viewingId, tenantId).use { cursor ->
-            if (cursor.moveToFirst()) toViewing(cursor) else null
+            items.sortedBy {
+                ViewingTime.toMillis(it.date, it.timeSlot)
+                    ?: Long.MAX_VALUE
+            }
         }
     }
 
+    // READ: Get one viewing.
+    suspend fun getViewing(
+        viewingId: Long,
+        tenantId: Long
+    ): ViewingItem? = withContext(Dispatchers.IO) {
+        findViewing(viewingId, tenantId)
+    }
+
+    // Find a viewing belonging to a specific tenant.
+    private fun findViewing(
+        viewingId: Long,
+        tenantId: Long
+    ): ViewingItem? {
+        return database.getViewingById(viewingId, tenantId).use { cursor ->
+            if (cursor.moveToFirst()) {
+                toViewing(cursor)
+            } else {
+                null
+            }
+        }
+    }
+
+    // Check whether a slot is already booked.
     private fun isSlotBooked(
         propertyId: Long,
         date: String,
         slot: String,
         excludeViewingId: Long
     ): Boolean {
-        return database.getBookedSlots(propertyId, date, excludeViewingId).use { cursor ->
+        return database.getBookedSlots(
+            propertyId,
+            date,
+            excludeViewingId
+        ).use { cursor ->
+
             var found = false
+
             while (cursor.moveToNext()) {
                 if (cursor.getString(0) == slot) {
                     found = true
+                    break
                 }
             }
+
             found
         }
     }
 
+    // Convert a database row into a ViewingItem.
     private fun toViewing(cursor: Cursor): ViewingItem {
         return ViewingItem(
-            id = cursor.getLong(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_VIEWING_ID)),
-            propertyId = cursor.getLong(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_ID)),
-            propertyTitle = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_TITLE)),
-            propertyLocation = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_LOCATION)),
-            date = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_VIEWING_DATE)),
-            timeSlot = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_VIEWING_SLOT))
+            id = cursor.getLong(
+                cursor.getColumnIndexOrThrow(
+                    UserDatabaseHelper.COL_VIEWING_ID
+                )
+            ),
+            propertyId = cursor.getLong(
+                cursor.getColumnIndexOrThrow(
+                    UserDatabaseHelper.COL_PROPERTY_ID
+                )
+            ),
+            propertyTitle = cursor.getString(
+                cursor.getColumnIndexOrThrow(
+                    UserDatabaseHelper.COL_PROPERTY_TITLE
+                )
+            ),
+            propertyLocation = cursor.getString(
+                cursor.getColumnIndexOrThrow(
+                    UserDatabaseHelper.COL_PROPERTY_LOCATION
+                )
+            ),
+            date = cursor.getString(
+                cursor.getColumnIndexOrThrow(
+                    UserDatabaseHelper.COL_VIEWING_DATE
+                )
+            ),
+            timeSlot = cursor.getString(
+                cursor.getColumnIndexOrThrow(
+                    UserDatabaseHelper.COL_VIEWING_SLOT
+                )
+            )
         )
+    }
+
+    // Access the existing tenant viewing query through the database helper.
+    private fun getTenantViewings(tenantId: Long): Cursor {
+        return database.getTenantViewings(tenantId)
     }
 }

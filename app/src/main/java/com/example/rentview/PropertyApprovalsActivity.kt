@@ -44,6 +44,7 @@ class PropertyApprovalsActivity : AppCompatActivity() {
         }
 
         rootLayout.addView(heading)
+
         rootLayout.addView(
             scrollView,
             LinearLayout.LayoutParams(
@@ -53,9 +54,32 @@ class PropertyApprovalsActivity : AppCompatActivity() {
             )
         )
 
+        val backButton = Button(this).apply {
+            text = "Back to Dashboard"
+            isAllCaps = false
+
+            setOnClickListener {
+                val intent = android.content.Intent(
+                    this@PropertyApprovalsActivity,
+                    AdminDashboardActivity::class.java
+                )
+                startActivity(intent)
+                finish()
+            }
+        }
+
+        rootLayout.addView(
+            backButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
         setContentView(rootLayout)
 
         loadPendingProperties()
+
     }
 
     private fun loadPendingProperties() {
