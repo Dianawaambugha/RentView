@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 data class PropertyDetailsState(
     val isLoading: Boolean = true,
     val property: PropertyItem? = null,
-    val photoCount: Int = 0,
+    val photoUris: List<String> = emptyList(),
     val error: String? = null
 )
 
@@ -48,7 +48,7 @@ class PropertyDetailsViewModel(application: Application) : AndroidViewModel(appl
                     PropertyDetailsState(
                         isLoading = false,
                         property = property,
-                        photoCount = repository.getPhotoCount(propertyId)
+                        photoUris = repository.getPhotoUris(propertyId)
                     )
                 }
             } catch (e: Exception) {
