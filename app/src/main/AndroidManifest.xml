@@ -10,29 +10,31 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.rentview">
+        <activity android:name=".DashboardStatisticsActivity" android:exported="false" />
+        <activity android:name=".ViewingRequestsActivity" android:exported="false" />
+        <activity android:name=".AllPropertiesActivity" android:exported="false" />
         <activity android:name=".PropertyListActivity" android:exported="false" />
         <activity android:name=".PropertyDetailsActivity" android:exported="false" />
         <activity android:name=".ScheduleViewingActivity" android:exported="false" />
         <activity android:name=".MyViewingsActivity" android:exported="false" />
-        <activity
-            android:name=".HomeActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".PropertyApprovalsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".AdminLoginActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name=".AdminDashboardActivity"
-            android:exported="false" />
-
+ -[=       <activity android:name=".HomeActivity" android:exported="false" />
+        <activity android:name=".PropertyApprovalsActivity" android:exported="false" />
+        <activity android:name=".AdminLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AdminDashboardActivity" android:exported="false" />
+        <activity android:name=".FinancialOverviewActivity" />
         <activity
             android:name=".OwnerApprovalsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".AllOwnersActivity"
+            android:exported="false" />
+        <activity
+            android:name=".AllTenantsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".PropertyEditRequestsActivity"
             android:exported="false" />
         <activity
             android:name=".EditPropertyActivity"

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F5F6FA">
+
+    <!-- Scrollable content -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- Screen Heading -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/financial_overview"
+                android:textColor="#172554"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/financial_summary_subtitle"
+                android:textColor="#64748B"
+                android:textSize="14sp"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Approved Properties -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/approved_properties"
+                android:textColor="#475569"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvApprovedPropertyCount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/zero_value"
+                android:textColor="#172554"
+                android:textSize="30sp"
+                android:textStyle="bold"
+                android:paddingBottom="20dp" />
+
+            <!-- Total Advertised Rent -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/total_advertised_monthly_rent"
+                android:textColor="#475569"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvTotalAdvertisedRent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/default_rent_value"
+                android:textColor="#15803D"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:paddingBottom="20dp" />
+
+            <!-- Average Advertised Rent -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/average_advertised_monthly_rent"
+                android:textColor="#475569"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvAverageAdvertisedRent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/default_rent_value"
+                android:textColor="#172554"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:paddingBottom="24dp" />
+
+            <!-- Important Information -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/important_information"
+                android:textColor="#172554"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/financial_disclaimer"
+                android:textColor="#64748B"
+                android:textSize="14sp"
+                android:lineSpacingExtra="4dp"
+                android:background="#E2E8F0"
+                android:padding="16dp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Fixed bottom bar: always visible -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#FFFFFF">
+
+        <Button
+            android:id="@+id/btnBack"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:text="@string/back"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#173B57" />
+
+    </LinearLayout>
+
+</LinearLayout>

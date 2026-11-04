@@ -1,42 +1,166 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:background="#F5F7FA">
+    android:background="#F5F7FA"
+    android:fillViewport="true">
 
-    <TextView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="RentView Administration"
-        android:textSize="26sp"
-        android:textStyle="bold"
-        android:textColor="#17365D"
-        android:layout_marginBottom="12dp" />
+        android:orientation="vertical"
+        android:padding="24dp">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Manage owner accounts and verify house listings."
-        android:textSize="16sp"
-        android:textColor="#555555"
-        android:layout_marginBottom="28dp" />
+        <!-- Dashboard Header -->
 
-    <Button
-        android:id="@+id/btnOwnerApprovals"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Review Property Owners"
-        android:textAllCaps="false"
-        android:layout_marginBottom="16dp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_dashboard_title"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:textColor="#17365D"
+            android:layout_marginBottom="8dp" />
 
-    <Button
-        android:id="@+id/btnPropertyApprovals"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Review House Listings"
-        android:textAllCaps="false" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_dashboard_description"
+            android:textSize="16sp"
+            android:textColor="#555555"
+            android:layout_marginBottom="24dp" />
 
-</LinearLayout>
+        <!-- Dashboard Overview -->
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_dashboard_overview"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#17365D"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnDashboardStatistics"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_dashboard_statistics"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Property Management -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_property_management"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#17365D"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnAllProperties"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_all_properties"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnPropertyApprovals"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_property_approvals"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnPropertyEditRequests"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_property_edit_requests"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Viewing Management -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_viewing_management"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#17365D"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnAllViewings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_all_viewings"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <!-- User Management -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_user_management"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#17365D"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnAllTenants"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_all_tenants"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnAllOwners"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_all_owners"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnOwnerApprovals"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_owner_approvals"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Financial Overview -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_financial_overview"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#17365D"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnFinancialOverview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/admin_view_financial_overview"
+            android:textAllCaps="false"
+            android:layout_marginBottom="12dp" />
+
+    </LinearLayout>
+</ScrollView>

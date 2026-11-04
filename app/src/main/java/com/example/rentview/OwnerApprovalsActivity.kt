@@ -49,10 +49,16 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         val backButton = Button(this)
         backButton.text = "Back to Dashboard"
         backButton.setOnClickListener {
+            val intent = android.content.Intent(
+                this,
+                AdminDashboardActivity::class.java
+            )
+            startActivity(intent)
             finish()
         }
 
         root.addView(backButton)
+
 
         setContentView(root)
 

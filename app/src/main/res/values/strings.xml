@@ -12,6 +12,7 @@
     <string name="get_started">Get Started</string>
     <string name="admin_login">Administrator Login</string>
     <string name="log_out">Log Out</string>
+    <string name="back">Back</string>
 
     <!-- Edit Property Screen -->
     <string name="edit_property_title">Edit Property</string>
@@ -35,6 +36,40 @@
     <string name="property_edit_pending">This property already has an edit awaiting admin approval.</string>
     <string name="my_properties_empty">You have not added any properties yet.</string>
     <string name="back_to_dashboard">Back to Dashboard</string>
+
+    <!-- Admin Dashboard -->
+    <string name="admin_dashboard_title">RentView Administration</string>
+    <string name="admin_dashboard_description">Manage properties, users, viewing appointments, and platform performance.</string>
+
+    <string name="admin_dashboard_overview">Dashboard Overview</string>
+    <string name="admin_dashboard_statistics">Dashboard Statistics</string>
+
+    <string name="admin_property_management">Property Management</string>
+    <string name="admin_all_properties">View All Properties</string>
+    <string name="admin_property_approvals">Review House Listings</string>
+    <string name="admin_property_edit_requests">Review Property Edit Requests</string>
+
+    <string name="admin_viewing_management">Viewing Management</string>
+    <string name="admin_all_viewings">View All Scheduled Viewings</string>
+
+    <string name="admin_user_management">User Management</string>
+    <string name="admin_all_tenants">View All Tenants</string>
+    <string name="admin_all_owners">View All Property Owners</string>
+    <string name="admin_owner_approvals">Review Property Owners</string>
+
+    <string name="admin_financial_overview">Financial Overview</string>
+    <string name="admin_view_financial_overview">View Financial Overview</string>
+
+    <!-- Financial Overview Screen -->
+    <string name="financial_overview">Financial Overview</string>
+    <string name="financial_summary_subtitle">A summary of the rental listings currently approved on RentView.</string>
+    <string name="approved_properties">Approved Properties</string>
+    <string name="zero_value">0</string>
+    <string name="total_advertised_monthly_rent">Total Advertised Monthly Rent</string>
+    <string name="average_advertised_monthly_rent">Average Advertised Monthly Rent</string>
+    <string name="default_rent_value">KSh 0</string>
+    <string name="important_information">Important Information</string>
+    <string name="financial_disclaimer">These figures are based on the rent advertised in approved listings. They do not represent rent payments received, confirmed leases, or occupied properties.</string>
 
     <!-- User Roles -->
     <string-array name="user_roles">
