@@ -3,6 +3,7 @@ package com.example.rentview.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -17,6 +18,7 @@ class PropertyAdapter(
 ) : ListAdapter<PropertyItem, PropertyAdapter.PropertyViewHolder>(DIFF) {
 
     class PropertyViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val photo: ImageView = view.findViewById(R.id.ivPropertyPhoto)
         val title: TextView = view.findViewById(R.id.tvPropertyTitle)
         val location: TextView = view.findViewById(R.id.tvPropertyLocation)
         val bedrooms: TextView = view.findViewById(R.id.tvPropertyBedrooms)
@@ -36,6 +38,16 @@ class PropertyAdapter(
         holder.location.text = property.location
         holder.bedrooms.text = Formatters.bedrooms(property.bedrooms)
         holder.rent.text = Formatters.rent(property.rent)
+
+        // Show the first photo as the card's picture, if the owner uploaded any.
+        val firstPhoto = property.photoUris.firstOrNull()
+        if (firstPhoto == null) {
+            holder.photo.visibility = View.GONE
+            holder.photo.tag = null
+        } else {
+            holder.photo.visibility = View.VISIBLE
+            ImageLoader.load(holder.photo, firstPhoto, 600)
+        }
 
         holder.itemView.setOnClickListener { onPropertyClicked(property) }
     }

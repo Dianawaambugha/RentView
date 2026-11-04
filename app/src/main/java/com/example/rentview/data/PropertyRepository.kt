@@ -9,15 +9,19 @@ import kotlinx.coroutines.withContext
 // It hides the SQLite cursors and returns plain Kotlin objects.
 class PropertyRepository(private val database: UserDatabaseHelper) {
 
+    // Every approved property, each one with its photo URIs attached.
     suspend fun getApprovedProperties(): List<PropertyItem> =
         withContext(Dispatchers.IO) {
-            database.getApprovedProperties().use { cursor ->
+            val properties = database.getApprovedProperties().use { cursor ->
                 val items = mutableListOf<PropertyItem>()
                 while (cursor.moveToNext()) {
                     items.add(toProperty(cursor))
                 }
                 items
             }
+
+            // The first cursor is closed before the photo queries start.
+            properties.map { it.copy(photoUris = readPhotoUris(it.id)) }
         }
 
     suspend fun getProperty(propertyId: Long): PropertyItem? =
@@ -32,11 +36,27 @@ class PropertyRepository(private val database: UserDatabaseHelper) {
             database.getPropertyPhotos(propertyId).use { it.count }
         }
 
+    suspend fun getPhotoUris(propertyId: Long): List<String> =
+        withContext(Dispatchers.IO) {
+            readPhotoUris(propertyId)
+        }
+
     // Testing only: see UserDatabaseHelper.seedSampleProperties().
     suspend fun seedSampleProperties(): Int =
         withContext(Dispatchers.IO) {
             database.seedSampleProperties()
         }
+
+    // Must be called from a background thread.
+    private fun readPhotoUris(propertyId: Long): List<String> {
+        return database.getPropertyPhotos(propertyId).use { cursor ->
+            val uris = mutableListOf<String>()
+            while (cursor.moveToNext()) {
+                uris.add(cursor.getString(0))
+            }
+            uris
+        }
+    }
 
     private fun toProperty(cursor: Cursor): PropertyItem {
         return PropertyItem(

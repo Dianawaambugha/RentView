@@ -25,6 +25,7 @@ class HomeActivity : AppCompatActivity() {
         // Read the user's details passed from the login screen
         val userName = intent.getStringExtra("USER_NAME") ?: "User"
         val role = intent.getStringExtra("USER_ROLE") ?: "Tenant"
+        val userId = intent.getLongExtra("USER_ID", -1L)
 
         // Display the user's name and role
         greeting.text = "Welcome, $userName!"
@@ -42,26 +43,37 @@ class HomeActivity : AppCompatActivity() {
             secondaryButton.text = "My Viewings"
             profile.text = "Discover rental properties and manage your viewing appointments."
         }
-// Open the Add Property screen for property owners
+
+        // Main button: owners add a property, tenants browse the approved properties
         primaryButton.setOnClickListener {
             if (role == "Property Owner") {
                 val addPropertyIntent = Intent(this, AddPropertyActivity::class.java)
+                addPropertyIntent.putExtra("USER_ID", userId)
                 startActivity(addPropertyIntent)
             } else {
-                Toast.makeText(
-                    this,
-                    "Property browsing will be added next.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                val browseIntent = Intent(this, PropertyListActivity::class.java)
+                browseIntent.putExtra("USER_ID", userId)
+                startActivity(browseIntent)
             }
         }
 
+        // Second button: owners see their own properties, tenants see their viewings
         secondaryButton.setOnClickListener {
-            Toast.makeText(
-                this,
-                "This feature will be added next.",
-                Toast.LENGTH_SHORT
-            ).show()
+            if (userId == -1L) {
+                Toast.makeText(
+                    this,
+                    "Unable to identify your account. Please log in again.",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else if (role == "Property Owner") {
+                val propertiesIntent = Intent(this, MyPropertiesActivity::class.java)
+                propertiesIntent.putExtra("USER_ID", userId)
+                startActivity(propertiesIntent)
+            } else {
+                val viewingsIntent = Intent(this, MyViewingsActivity::class.java)
+                viewingsIntent.putExtra("USER_ID", userId)
+                startActivity(viewingsIntent)
+            }
         }
 
         // Log out and return to the welcome screen
