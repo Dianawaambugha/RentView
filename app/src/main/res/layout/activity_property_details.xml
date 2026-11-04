@@ -97,6 +97,23 @@
                 android:textColor="#263746"
                 android:textSize="15sp" />
 
+            <!-- Photos: swipe sideways to see them all. Hidden when there are none. -->
+            <HorizontalScrollView
+                android:id="@+id/scrollDetailPhotos"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/layoutDetailPhotos"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+
+            </HorizontalScrollView>
+
             <TextView
                 android:id="@+id/tvDetailPhotos"
                 android:layout_width="match_parent"

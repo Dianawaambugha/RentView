@@ -8,7 +8,8 @@ data class PropertyItem(
     val rent: Double,
     val bedrooms: Int,
     val description: String,
-    val isApproved: Boolean
+    val isApproved: Boolean,
+    val photoUris: List<String> = emptyList()
 )
 
 // A viewing a tenant has booked, joined with its property's details.

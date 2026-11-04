@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rentview.UserDatabaseHelper
+import com.example.rentview.data.PropertyFilter
 import com.example.rentview.data.PropertyItem
 import com.example.rentview.data.PropertyRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,8 +14,19 @@ import kotlinx.coroutines.launch
 // What the property list screen can be showing.
 sealed class PropertyListState {
     object Loading : PropertyListState()
+
+    // There are no approved properties at all.
     object Empty : PropertyListState()
-    data class Success(val items: List<PropertyItem>) : PropertyListState()
+
+    // There are properties, but none pass the search and filters.
+    object NoMatches : PropertyListState()
+
+    // items = the properties that pass the filters, total = all approved properties.
+    data class Success(
+        val items: List<PropertyItem>,
+        val total: Int = items.size
+    ) : PropertyListState()
+
     data class Error(val message: String) : PropertyListState()
 }
 
@@ -29,6 +41,11 @@ class PropertyListViewModel(application: Application) : AndroidViewModel(applica
     private val _state = MutableStateFlow<PropertyListState>(PropertyListState.Loading)
     val state: StateFlow<PropertyListState> = _state
 
+    // Every approved property, loaded once. Searching and filtering work on this
+    // list in memory, so typing in the search box never touches the database.
+    private var allProperties: List<PropertyItem> = emptyList()
+    private var filter = PropertyFilter()
+
     init {
         load()
     }
@@ -37,16 +54,38 @@ class PropertyListViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             _state.value = PropertyListState.Loading
             try {
-                val items = repository.getApprovedProperties()
-                _state.value = if (items.isEmpty()) {
-                    PropertyListState.Empty
-                } else {
-                    PropertyListState.Success(items)
-                }
+                allProperties = repository.getApprovedProperties()
+                showFiltered()
             } catch (e: Exception) {
                 _state.value = PropertyListState.Error(
                     "Could not load properties. Please try again."
                 )
+            }
+        }
+    }
+
+    // Called whenever the search text or a filter field changes.
+    fun updateFilter(newFilter: PropertyFilter) {
+        if (newFilter == filter) return
+        filter = newFilter
+
+        // While loading (or after an error) there is nothing to filter yet.
+        // load() applies the latest filter when it finishes.
+        val current = _state.value
+        if (current !is PropertyListState.Loading && current !is PropertyListState.Error) {
+            showFiltered()
+        }
+    }
+
+    private fun showFiltered() {
+        _state.value = if (allProperties.isEmpty()) {
+            PropertyListState.Empty
+        } else {
+            val matches = allProperties.filter { filter.matches(it) }
+            if (matches.isEmpty()) {
+                PropertyListState.NoMatches
+            } else {
+                PropertyListState.Success(matches, allProperties.size)
             }
         }
     }
