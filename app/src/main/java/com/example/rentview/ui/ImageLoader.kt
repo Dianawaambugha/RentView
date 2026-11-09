@@ -1,5 +1,10 @@
 package com.example.rentview.ui
 
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.activities.*
+import com.example.rentview.ui.adapters.*
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

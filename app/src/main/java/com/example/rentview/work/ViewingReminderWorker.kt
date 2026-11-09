@@ -1,5 +1,10 @@
 package com.example.rentview.work
 
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.activities.*
+import com.example.rentview.ui.adapters.*
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel

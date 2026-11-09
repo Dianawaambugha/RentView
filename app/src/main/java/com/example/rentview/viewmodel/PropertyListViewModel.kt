@@ -1,9 +1,14 @@
 package com.example.rentview.viewmodel
 
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.activities.*
+import com.example.rentview.ui.adapters.*
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.UserDatabaseHelper
+import com.example.rentview.data.UserDatabaseHelper
 import com.example.rentview.data.PropertyFilter
 import com.example.rentview.data.PropertyItem
 import com.example.rentview.data.PropertyRepository

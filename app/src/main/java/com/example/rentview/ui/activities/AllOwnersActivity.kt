@@ -1,18 +1,20 @@
-package com.example.rentview
+package com.example.rentview.ui.activities
+
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.adapters.*
 
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
-class AllTenantsActivity : AppCompatActivity() {
+class AllOwnersActivity : AppCompatActivity() {
     private lateinit var databaseHelper: UserDatabaseHelper
-    private lateinit var tenantsContainer: LinearLayout
+    private lateinit var ownersContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,24 +27,24 @@ class AllTenantsActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "All Registered Tenants"
+            text = "All Registered Property Owners"
             textSize = 24f
             gravity = Gravity.CENTER
             setPadding(0, 16, 0, 24)
         }
 
-        tenantsContainer = LinearLayout(this).apply {
+        ownersContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
         val scrollView = ScrollView(this).apply {
-            addView(tenantsContainer)
+            addView(ownersContainer)
         }
+
         val backButton = Button(this).apply {
             text = "Back to Dashboard"
             setOnClickListener { finish() }
         }
-
         mainLayout.addView(title)
         mainLayout.addView(
             scrollView,
@@ -56,27 +58,28 @@ class AllTenantsActivity : AppCompatActivity() {
 
         setContentView(mainLayout)
 
-        displayTenants()
+        displayOwners()
     }
-    private fun displayTenants() {
-        tenantsContainer.removeAllViews()
 
-        val cursor = databaseHelper.getAllTenants()
+    private fun displayOwners() {
+        ownersContainer.removeAllViews()
+
+        val cursor = databaseHelper.getAllOwners()
 
         cursor.use {
             if (!it.moveToFirst()) {
                 val emptyMessage = TextView(this).apply {
-                    text = "No registered tenants found."
+                    text = "No registered property owners found."
                     textSize = 16f
                     gravity = Gravity.CENTER
                     setPadding(16, 40, 16, 40)
                 }
 
-                tenantsContainer.addView(emptyMessage)
+                ownersContainer.addView(emptyMessage)
                 return
             }
             do {
-                val tenantId = it.getLong(
+                val ownerId = it.getLong(
                     it.getColumnIndexOrThrow(UserDatabaseHelper.COL_ID)
                 )
 
@@ -97,9 +100,10 @@ class AllTenantsActivity : AppCompatActivity() {
                         UserDatabaseHelper.COL_APPROVAL_STATUS
                     )
                 )
-                val tenantCard = TextView(this).apply {
+
+                val ownerCard = TextView(this).apply {
                     text = """
-                        Tenant ID: $tenantId
+                        Owner ID: $ownerId
                         Name: $name
                         Email: $email
                         Phone: $phone
@@ -112,7 +116,6 @@ class AllTenantsActivity : AppCompatActivity() {
                         android.R.drawable.dialog_holo_light_frame
                     )
                 }
-
                 val params = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -120,9 +123,9 @@ class AllTenantsActivity : AppCompatActivity() {
 
                 params.setMargins(0, 0, 0, 16)
 
-                tenantsContainer.addView(tenantCard, params)
+                ownersContainer.addView(ownerCard, params)
 
             } while (it.moveToNext())
         }
     }
-            }
+        }

@@ -1,4 +1,8 @@
-package com.example.rentview
+package com.example.rentview.ui.activities
+
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.adapters.*
 
 import android.content.Intent
 import android.os.Bundle
@@ -17,7 +21,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.rentview.data.ViewingTime
-import com.example.rentview.ui.ViewingAdapter
+import com.example.rentview.ui.adapters.ViewingAdapter
 import com.example.rentview.viewmodel.MyViewingsState
 import com.example.rentview.viewmodel.MyViewingsViewModel
 import kotlinx.coroutines.launch

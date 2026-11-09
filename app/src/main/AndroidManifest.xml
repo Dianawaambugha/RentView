@@ -12,30 +12,30 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.rentview">
 
-        <activity android:name=".DashboardStatisticsActivity" android:exported="false" />
-        <activity android:name=".ViewingRequestsActivity" android:exported="false" />
-        <activity android:name=".AllPropertiesActivity" android:exported="false" />
-        <activity android:name=".PropertyListActivity" android:exported="false" />
-        <activity android:name=".PropertyDetailsActivity" android:exported="false" />
-        <activity android:name=".ScheduleViewingActivity" android:exported="false" />
-        <activity android:name=".MyViewingsActivity" android:exported="false" />
-        <activity android:name=".HomeActivity" android:exported="false" />
-        <activity android:name=".PropertyApprovalsActivity" android:exported="false" />
-        <activity android:name=".AdminLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".AdminDashboardActivity" android:exported="false" />
-        <activity android:name=".FinancialOverviewActivity" android:exported="false" />
-        <activity android:name=".OwnerApprovalsActivity" android:exported="false" />
-        <activity android:name=".AllOwnersActivity" android:exported="false" />
-        <activity android:name=".AllTenantsActivity" android:exported="false" />
-        <activity android:name=".PropertyEditRequestsActivity" android:exported="false" />
-        <activity android:name=".EditPropertyActivity" android:exported="false" />
-        <activity android:name=".AddPropertyActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".LoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RegisterActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".MyPropertiesActivity" android:exported="false" />
+        <activity android:name=".ui.activities.DashboardStatisticsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.ViewingRequestsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.AllPropertiesActivity" android:exported="false" />
+        <activity android:name=".ui.activities.PropertyListActivity" android:exported="false" />
+        <activity android:name=".ui.activities.PropertyDetailsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.ScheduleViewingActivity" android:exported="false" />
+        <activity android:name=".ui.activities.MyViewingsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.HomeActivity" android:exported="false" />
+        <activity android:name=".ui.activities.PropertyApprovalsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.AdminLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.activities.AdminDashboardActivity" android:exported="false" />
+        <activity android:name=".ui.activities.FinancialOverviewActivity" android:exported="false" />
+        <activity android:name=".ui.activities.OwnerApprovalsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.AllOwnersActivity" android:exported="false" />
+        <activity android:name=".ui.activities.AllTenantsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.PropertyEditRequestsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.EditPropertyActivity" android:exported="false" />
+        <activity android:name=".ui.activities.AddPropertyActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.activities.LoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.activities.RegisterActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.activities.MyPropertiesActivity" android:exported="false" />
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.activities.MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
 

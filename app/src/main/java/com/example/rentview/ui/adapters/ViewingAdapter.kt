@@ -1,4 +1,4 @@
-package com.example.rentview.ui
+package com.example.rentview.ui.adapters
 
 import android.view.LayoutInflater
 import android.view.View
