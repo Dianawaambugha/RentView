@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -10,6 +11,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.rentview">
+
         <activity android:name=".DashboardStatisticsActivity" android:exported="false" />
         <activity android:name=".ViewingRequestsActivity" android:exported="false" />
         <activity android:name=".AllPropertiesActivity" android:exported="false" />
@@ -17,58 +19,32 @@
         <activity android:name=".PropertyDetailsActivity" android:exported="false" />
         <activity android:name=".ScheduleViewingActivity" android:exported="false" />
         <activity android:name=".MyViewingsActivity" android:exported="false" />
- -[=       <activity android:name=".HomeActivity" android:exported="false" />
+        <activity android:name=".HomeActivity" android:exported="false" />
         <activity android:name=".PropertyApprovalsActivity" android:exported="false" />
         <activity android:name=".AdminLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AdminDashboardActivity" android:exported="false" />
-        <activity android:name=".FinancialOverviewActivity" />
-        <activity
-            android:name=".OwnerApprovalsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".AllOwnersActivity"
-            android:exported="false" />
-        <activity
-            android:name=".AllTenantsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".PropertyEditRequestsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".EditPropertyActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".AddPropertyActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name=".LoginActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name=".RegisterActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name=".MyPropertiesActivity"
-            android:exported="false" />
+        <activity android:name=".FinancialOverviewActivity" android:exported="false" />
+        <activity android:name=".OwnerApprovalsActivity" android:exported="false" />
+        <activity android:name=".AllOwnersActivity" android:exported="false" />
+        <activity android:name=".AllTenantsActivity" android:exported="false" />
+        <activity android:name=".PropertyEditRequestsActivity" android:exported="false" />
+        <activity android:name=".EditPropertyActivity" android:exported="false" />
+        <activity android:name=".AddPropertyActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".LoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RegisterActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".MyPropertiesActivity" android:exported="false" />
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
     </application>
-
 </manifest>
