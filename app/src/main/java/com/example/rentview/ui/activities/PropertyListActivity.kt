@@ -1,4 +1,8 @@
-package com.example.rentview
+package com.example.rentview.ui.activities
+
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.adapters.*
 
 import android.content.Context
 import android.content.Intent
@@ -20,7 +24,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.rentview.data.PropertyFilter
-import com.example.rentview.ui.PropertyAdapter
+import com.example.rentview.ui.adapters.PropertyAdapter
 import com.example.rentview.viewmodel.PropertyListState
 import com.example.rentview.viewmodel.PropertyListViewModel
 import kotlinx.coroutines.launch

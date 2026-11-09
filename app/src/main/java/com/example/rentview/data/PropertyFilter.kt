@@ -1,5 +1,9 @@
 package com.example.rentview.data
 
+import com.example.rentview.R
+import com.example.rentview.ui.activities.*
+import com.example.rentview.ui.adapters.*
+
 // What the tenant typed into the search box and the filter fields.
 // A property is shown only if it passes every filter that has been set.
 data class PropertyFilter(

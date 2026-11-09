@@ -1,7 +1,11 @@
 package com.example.rentview.data
 
+import com.example.rentview.R
+import com.example.rentview.ui.activities.*
+import com.example.rentview.ui.adapters.*
+
 import android.database.Cursor
-import com.example.rentview.UserDatabaseHelper
+import com.example.rentview.data.UserDatabaseHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

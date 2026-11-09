@@ -1,16 +1,22 @@
-package com.example.rentview
+package com.example.rentview.ui.activities
+
+import com.example.rentview.R
+import com.example.rentview.data.*
+import com.example.rentview.ui.adapters.*
 
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
-class AllOwnersActivity : AppCompatActivity() {
+class AllTenantsActivity : AppCompatActivity() {
     private lateinit var databaseHelper: UserDatabaseHelper
-    private lateinit var ownersContainer: LinearLayout
+    private lateinit var tenantsContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,24 +29,24 @@ class AllOwnersActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "All Registered Property Owners"
+            text = "All Registered Tenants"
             textSize = 24f
             gravity = Gravity.CENTER
             setPadding(0, 16, 0, 24)
         }
 
-        ownersContainer = LinearLayout(this).apply {
+        tenantsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
         val scrollView = ScrollView(this).apply {
-            addView(ownersContainer)
+            addView(tenantsContainer)
         }
-
         val backButton = Button(this).apply {
             text = "Back to Dashboard"
             setOnClickListener { finish() }
         }
+
         mainLayout.addView(title)
         mainLayout.addView(
             scrollView,
@@ -54,28 +60,27 @@ class AllOwnersActivity : AppCompatActivity() {
 
         setContentView(mainLayout)
 
-        displayOwners()
+        displayTenants()
     }
+    private fun displayTenants() {
+        tenantsContainer.removeAllViews()
 
-    private fun displayOwners() {
-        ownersContainer.removeAllViews()
-
-        val cursor = databaseHelper.getAllOwners()
+        val cursor = databaseHelper.getAllTenants()
 
         cursor.use {
             if (!it.moveToFirst()) {
                 val emptyMessage = TextView(this).apply {
-                    text = "No registered property owners found."
+                    text = "No registered tenants found."
                     textSize = 16f
                     gravity = Gravity.CENTER
                     setPadding(16, 40, 16, 40)
                 }
 
-                ownersContainer.addView(emptyMessage)
+                tenantsContainer.addView(emptyMessage)
                 return
             }
             do {
-                val ownerId = it.getLong(
+                val tenantId = it.getLong(
                     it.getColumnIndexOrThrow(UserDatabaseHelper.COL_ID)
                 )
 
@@ -96,10 +101,9 @@ class AllOwnersActivity : AppCompatActivity() {
                         UserDatabaseHelper.COL_APPROVAL_STATUS
                     )
                 )
-
-                val ownerCard = TextView(this).apply {
+                val tenantCard = TextView(this).apply {
                     text = """
-                        Owner ID: $ownerId
+                        Tenant ID: $tenantId
                         Name: $name
                         Email: $email
                         Phone: $phone
@@ -112,6 +116,7 @@ class AllOwnersActivity : AppCompatActivity() {
                         android.R.drawable.dialog_holo_light_frame
                     )
                 }
+
                 val params = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -119,9 +124,9 @@ class AllOwnersActivity : AppCompatActivity() {
 
                 params.setMargins(0, 0, 0, 16)
 
-                ownersContainer.addView(ownerCard, params)
+                tenantsContainer.addView(tenantCard, params)
 
             } while (it.moveToNext())
         }
     }
-        }
+            }
