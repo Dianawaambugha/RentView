@@ -1,74 +1,106 @@
 package com.example.rentview.data
 
-import android.database.Cursor
-import com.example.rentview.UserDatabaseHelper
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Duration.Companion.seconds
 
-// Repository: the only class the ViewModels talk to for property data.
-// It hides the SQLite cursors and returns plain Kotlin objects.
-class PropertyRepository(private val database: UserDatabaseHelper) {
+class PropertyRepository {
 
-    // Every approved property, each one with its photo URIs attached.
+    private val client = SupabaseClient.client
+
+    private fun JsonObject.value(key: String): String {
+        return this[key]?.jsonPrimitive?.content ?: ""
+    }
+
+    private fun JsonObject.longValue(key: String): Long {
+        return value(key).toLongOrNull() ?: 0L
+    }
+
+    private fun JsonObject.doubleValue(key: String): Double {
+        return value(key).toDoubleOrNull() ?: 0.0
+    }
+
+    private suspend fun getCloudPhotos(propertyId: String): List<String> {
+        val photos = client.from("property_photos")
+            .select()
+            .decodeList<JsonObject>()
+            .filter { it.value("property_id") == propertyId }
+
+        return photos.mapNotNull { photo ->
+            val path = photo.value("photo_uri")
+
+            if (path.isBlank()) {
+                null
+            } else {
+                try {
+                    client.storage.from("property-photos")
+                        .createSignedUrl(path, 3600.seconds)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+    }
+
     suspend fun getApprovedProperties(): List<PropertyItem> =
         withContext(Dispatchers.IO) {
-            val properties = database.getApprovedProperties().use { cursor ->
-                val items = mutableListOf<PropertyItem>()
-                while (cursor.moveToNext()) {
-                    items.add(toProperty(cursor))
+
+            val cloudProperties = client.from("properties")
+                .select()
+                .decodeList<JsonObject>()
+                .filter { it.value("property_status") == "APPROVED" }
+
+            cloudProperties.map { property ->
+                val cloudId = property.value("id")
+
+                PropertyItem(
+                    id = -1L,
+                    title = property.value("title"),
+                    location = property.value("location"),
+                    rent = property.doubleValue("rent"),
+                    bedrooms = property.longValue("bedrooms").toInt(),
+                    description = property.value("description"),
+                    isApproved = true,
+                    photoUris = getCloudPhotos(cloudId),
+                    supabaseId = cloudId
+                )
+            }
+        }
+
+    suspend fun getProperty(propertyId: String): PropertyItem? =
+        withContext(Dispatchers.IO) {
+
+            if (propertyId.isBlank()) return@withContext null
+
+            val property = client.from("properties")
+                .select {
+                    filter {
+                        eq("id", propertyId)
+                    }
                 }
-                items
-            }
+                .decodeList<JsonObject>()
+                .firstOrNull()
+                ?: return@withContext null
 
-            // The first cursor is closed before the photo queries start.
-            properties.map { it.copy(photoUris = readPhotoUris(it.id)) }
+            PropertyItem(
+                id = -1L,
+                title = property.value("title"),
+                location = property.value("location"),
+                rent = property.doubleValue("rent"),
+                bedrooms = property.longValue("bedrooms").toInt(),
+                description = property.value("description"),
+                isApproved = property.value("property_status") == "APPROVED",
+                photoUris = getCloudPhotos(propertyId),
+                supabaseId = propertyId
+            )
         }
 
-    suspend fun getProperty(propertyId: Long): PropertyItem? =
+    suspend fun getPhotoUris(propertyId: String): List<String> =
         withContext(Dispatchers.IO) {
-            database.getPropertyById(propertyId).use { cursor ->
-                if (cursor.moveToFirst()) toProperty(cursor) else null
-            }
+            getCloudPhotos(propertyId)
         }
-
-    suspend fun getPhotoCount(propertyId: Long): Int =
-        withContext(Dispatchers.IO) {
-            database.getPropertyPhotos(propertyId).use { it.count }
-        }
-
-    suspend fun getPhotoUris(propertyId: Long): List<String> =
-        withContext(Dispatchers.IO) {
-            readPhotoUris(propertyId)
-        }
-
-    // Testing only: see UserDatabaseHelper.seedSampleProperties().
-    suspend fun seedSampleProperties(): Int =
-        withContext(Dispatchers.IO) {
-            database.seedSampleProperties()
-        }
-
-    // Must be called from a background thread.
-    private fun readPhotoUris(propertyId: Long): List<String> {
-        return database.getPropertyPhotos(propertyId).use { cursor ->
-            val uris = mutableListOf<String>()
-            while (cursor.moveToNext()) {
-                uris.add(cursor.getString(0))
-            }
-            uris
-        }
-    }
-
-    private fun toProperty(cursor: Cursor): PropertyItem {
-        return PropertyItem(
-            id = cursor.getLong(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_ID)),
-            title = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_TITLE)),
-            location = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_LOCATION)),
-            rent = cursor.getDouble(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_RENT)),
-            bedrooms = cursor.getInt(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_BEDROOMS)),
-            description = cursor.getString(cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_DESCRIPTION)),
-            isApproved = cursor.getString(
-                cursor.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_STATUS)
-            ) == UserDatabaseHelper.STATUS_APPROVED
-        )
-    }
 }

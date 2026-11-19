@@ -1,9 +1,12 @@
+// ============================================================
+// FILE: PropertyDetailsViewModel.kt
+// ============================================================
+
 package com.example.rentview.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.UserDatabaseHelper
 import com.example.rentview.data.PropertyItem
 import com.example.rentview.data.PropertyRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,25 +20,33 @@ data class PropertyDetailsState(
     val error: String? = null
 )
 
-class PropertyDetailsViewModel(application: Application) : AndroidViewModel(application) {
+class PropertyDetailsViewModel(application: Application) :
+    AndroidViewModel(application) {
 
-    private val repository = PropertyRepository(
-        UserDatabaseHelper.getInstance(application)
-    )
+    private val repository = PropertyRepository()
 
     private val _state = MutableStateFlow(PropertyDetailsState())
     val state: StateFlow<PropertyDetailsState> = _state
 
-    private var loadedPropertyId: Long = -1L
+    private var loadedPropertyId: String? = null
 
-    fun load(propertyId: Long) {
-        if (propertyId == loadedPropertyId) {
+    // Load a property using its Supabase UUID.
+    fun load(propertyId: String) {
+        if (propertyId.isBlank()) {
+            _state.value = PropertyDetailsState(
+                isLoading = false,
+                error = "Invalid property reference."
+            )
             return
         }
+
+        if (propertyId == loadedPropertyId) return
+
         loadedPropertyId = propertyId
 
         viewModelScope.launch {
             _state.value = PropertyDetailsState(isLoading = true)
+
             try {
                 val property = repository.getProperty(propertyId)
 
@@ -48,14 +59,17 @@ class PropertyDetailsViewModel(application: Application) : AndroidViewModel(appl
                     PropertyDetailsState(
                         isLoading = false,
                         property = property,
-                        photoUris = repository.getPhotoUris(propertyId)
+                        photoUris = property.photoUris
                     )
                 }
+
             } catch (e: Exception) {
-                loadedPropertyId = -1L
+                loadedPropertyId = null
+
                 _state.value = PropertyDetailsState(
                     isLoading = false,
-                    error = "Could not load this property. Please try again."
+                    error = e.message
+                        ?: "Could not load this property. Please try again."
                 )
             }
         }

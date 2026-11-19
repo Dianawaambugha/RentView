@@ -88,6 +88,70 @@
             android:inputType="textMultiLine|textCapSentences"
             android:minHeight="100dp" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Current Property Photos"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="horizontal">
+
+            <LinearLayout
+                android:id="@+id/currentPropertyPhotos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+
+        </HorizontalScrollView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Replacement Photos (Optional)"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select new photos only if you want to replace the existing photos. The replacement will require admin approval."
+            android:textSize="13sp"
+            android:layout_marginBottom="10dp" />
+
+        <Button
+            android:id="@+id/btnChooseReplacementPhotos"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Choose Replacement Photos" />
+
+        <TextView
+            android:id="@+id/tvSelectedReplacementPhotos"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No replacement photos selected"
+            android:padding="8dp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="horizontal">
+
+            <LinearLayout
+                android:id="@+id/selectedReplacementPhotos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+
+        </HorizontalScrollView>
+
         <Button
             android:id="@+id/btnSubmitPropertyEdit"
             android:layout_width="match_parent"
