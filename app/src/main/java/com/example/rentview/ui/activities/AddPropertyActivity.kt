@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -16,17 +12,27 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.PropertyEntity
+import com.example.rentview.data.PropertyPhotoEntity
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class AddPropertyActivity : AppCompatActivity() {
 
     private val selectedPhotos = mutableListOf<Uri>()
-    private lateinit var databaseHelper: UserDatabaseHelper
+    private lateinit var database: RentViewDatabase
 
-    // Photo picker that keeps access to the chosen photos after a restart
     private val photoPicker = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-
         selectedPhotos.clear()
 
         for (uri in uris) {
@@ -36,9 +42,9 @@ class AddPropertyActivity : AppCompatActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (e: SecurityException) {
-                // Permission could not be saved for this photo; skip it.
                 continue
             }
+
             selectedPhotos.add(uri)
         }
 
@@ -54,22 +60,23 @@ class AddPropertyActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_add_property)
 
-        // Keep the form clear of the status bar, navigation bar and keyboard
-        // so the whole screen can be scrolled.
         val root = findViewById<View>(android.R.id.content)
+
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
+
             view.setPadding(
                 bars.left,
                 bars.top,
                 bars.right,
                 maxOf(bars.bottom, keyboard.bottom)
             )
+
             insets
         }
 
-        databaseHelper = UserDatabaseHelper(this)
+        database = RentViewDatabase.getInstance(this)
 
         val ownerId = intent.getLongExtra("USER_ID", -1L)
 
@@ -91,7 +98,6 @@ class AddPropertyActivity : AppCompatActivity() {
         }
 
         saveButton.setOnClickListener {
-
             val titleValue = title.text.toString().trim()
             val locationValue = location.text.toString().trim()
             val rentValue = rent.text.toString().trim().toDoubleOrNull()
@@ -129,37 +135,75 @@ class AddPropertyActivity : AppCompatActivity() {
                 }
 
                 else -> {
-                    val propertyId = databaseHelper.addProperty(
-                        ownerId,
-                        titleValue,
-                        locationValue,
-                        rentValue,
-                        bedroomsValue,
-                        descriptionValue,
-                        selectedPhotos.map { it.toString() }
-                    )
+                    saveButton.isEnabled = false
 
-                    if (propertyId > 0) {
-                        Toast.makeText(
-                            this,
-                            "Property submitted. It will appear to tenants once the administrator approves it.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        finish()
-                    } else {
-                        Toast.makeText(
-                            this,
-                            "Could not save the property. Make sure your owner account is approved.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                    lifecycleScope.launch {
+                        val propertyId = withContext(Dispatchers.IO) {
+                            val owner = database.userDao().getById(ownerId)
+                            if (owner == null ||
+                                owner.role != "Property Owner" ||
+                                owner.approvalStatus != "APPROVED"
+                            ) {
+                                return@withContext -1L
+                            }
+
+                            val property = PropertyEntity(
+                                ownerId = ownerId,
+                                title = titleValue,
+                                location = locationValue,
+                                rent = rentValue,
+                                bedrooms = bedroomsValue,
+                                description = descriptionValue,
+                                propertyStatus = "PENDING",
+                                createdAt = currentTimestamp()
+                            )
+
+                            val newPropertyId =
+                                database.propertyDao().insert(property)
+
+                            if (newPropertyId > 0) {
+                                val photos = selectedPhotos.map { uri ->
+                                    PropertyPhotoEntity(
+                                        propertyId = newPropertyId,
+                                        photoUri = uri.toString()
+                                    )
+                                }
+
+                                database.propertyPhotoDao().insertAll(photos)
+                            }
+
+                            newPropertyId
+                        }
+
+                        saveButton.isEnabled = true
+
+                        if (propertyId > 0) {
+                            Toast.makeText(
+                                this@AddPropertyActivity,
+                                "Property submitted. It will appear to tenants once the administrator approves it.",
+                                Toast.LENGTH_LONG
+                            ).show()
+
+                            finish()
+                        } else {
+                            Toast.makeText(
+                                this@AddPropertyActivity,
+                                "Could not save the property. Make sure your owner account is approved.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 }
             }
         }
     }
 
-    override fun onDestroy() {
-        databaseHelper.close()
-        super.onDestroy()
+    private fun currentTimestamp(): String {
+        val formatter = SimpleDateFormat(
+            "yyyy-MM-dd HH:mm:ss",
+            Locale.US
+        )
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date())
     }
 }

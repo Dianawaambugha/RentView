@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
@@ -13,15 +9,20 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DashboardStatisticsActivity : AppCompatActivity() {
 
-    private lateinit var databaseHelper: UserDatabaseHelper
+    private lateinit var database: RentViewDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        databaseHelper = UserDatabaseHelper.getInstance(this)
+        database = RentViewDatabase.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -46,42 +47,6 @@ class DashboardStatisticsActivity : AppCompatActivity() {
         val statisticsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-
-        addStatistic(
-            statisticsLayout,
-            "Total Registered Tenants",
-            databaseHelper.getTotalTenants()
-        )
-
-        addStatistic(
-            statisticsLayout,
-            "Total Registered Property Owners",
-            databaseHelper.getTotalOwners()
-        )
-
-        addStatistic(
-            statisticsLayout,
-            "Total Properties",
-            databaseHelper.getTotalProperties()
-        )
-
-        addStatistic(
-            statisticsLayout,
-            "Properties Awaiting Approval",
-            databaseHelper.getTotalPendingProperties()
-        )
-
-        addStatistic(
-            statisticsLayout,
-            "Property Edit Requests Awaiting Review",
-            databaseHelper.getTotalPendingPropertyEdits()
-        )
-
-        addStatistic(
-            statisticsLayout,
-            "Total Scheduled Viewing Bookings",
-            databaseHelper.getTotalViewings()
-        )
 
         val scrollView = ScrollView(this).apply {
             addView(statisticsLayout)
@@ -118,6 +83,46 @@ class DashboardStatisticsActivity : AppCompatActivity() {
         )
 
         setContentView(mainLayout)
+
+        loadStatistics(statisticsLayout)
+    }
+
+    private fun loadStatistics(statisticsLayout: LinearLayout) {
+        lifecycleScope.launch {
+
+            val statistics = withContext(Dispatchers.IO) {
+                val userDao = database.userDao()
+                val propertyDao = database.propertyDao()
+                val editDao = database.propertyEditRequestDao()
+                val viewingDao = database.viewingDao()
+
+                listOf(
+                    "Total Registered Tenants" to
+                            userDao.countByRole("Tenant"),
+
+                    "Total Registered Property Owners" to
+                            userDao.countByRole("Property Owner"),
+
+                    "Total Properties" to
+                            propertyDao.countAll(),
+
+                    "Properties Awaiting Approval" to
+                            propertyDao.countByStatus("PENDING"),
+
+                    "Property Edit Requests Awaiting Review" to
+                            editDao.getByStatus("PENDING").size,
+
+                    "Total Scheduled Viewing Bookings" to
+                            viewingDao.countAll()
+                )
+            }
+
+            statisticsLayout.removeAllViews()
+
+            statistics.forEach { (label, value) ->
+                addStatistic(statisticsLayout, label, value)
+            }
+        }
     }
 
     private fun addStatistic(
@@ -141,6 +146,4 @@ class DashboardStatisticsActivity : AppCompatActivity() {
             }
         )
     }
-
-
 }

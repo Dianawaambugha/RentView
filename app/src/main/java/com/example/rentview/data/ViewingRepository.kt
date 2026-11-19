@@ -1,41 +1,40 @@
 package com.example.rentview.data
 
-import com.example.rentview.R
-import com.example.rentview.ui.activities.*
-import com.example.rentview.ui.adapters.*
-
-import android.database.Cursor
-import com.example.rentview.data.UserDatabaseHelper
+import android.database.sqlite.SQLiteConstraintException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// Repository for viewings. All the booking rules live here.
+// Repository for viewing operations using Room.
+// All booking rules remain in this repository.
 class ViewingRepository(
-    private val database: UserDatabaseHelper,
+    private val database: RentViewDatabase,
     private val properties: PropertyRepository
 ) {
 
-    // Get available slots for a property on a date.
-// Exclude a viewing when rescheduling.
+    private val viewingDao = database.viewingDao()
+
+    // Get available slots for a property on a particular date.
+    // Exclude the current viewing when rescheduling.
     suspend fun getAvailableSlots(
         propertyId: Long,
         date: String,
         excludeViewingId: Long = 0L
     ): List<String> = withContext(Dispatchers.IO) {
 
-        val booked = mutableSetOf<String>()
-
-        database.getBookedSlots(propertyId, date, excludeViewingId).use { cursor ->
-            while (cursor.moveToNext()) {
-                booked.add(cursor.getString(0))
-            }
-        }
+        val booked = viewingDao.getBookedSlots(
+            propertyId,
+            date,
+            excludeViewingId
+        ).toSet()
 
         val now = System.currentTimeMillis()
 
         ViewingTime.ALL_SLOTS.filter { slot ->
             val slotTime = ViewingTime.toMillis(date, slot)
-            slot !in booked && slotTime != null && slotTime > now
+
+            slot !in booked &&
+                    slotTime != null &&
+                    slotTime > now
         }
     }
 
@@ -48,46 +47,73 @@ class ViewingRepository(
     ): BookingResult = withContext(Dispatchers.IO) {
 
         val slotTime = ViewingTime.toMillis(date, slot)
-            ?: return@withContext BookingResult.Failure("Invalid date or time.")
+            ?: return@withContext BookingResult.Failure(
+                "Invalid date or time."
+            )
 
         if (slotTime <= System.currentTimeMillis()) {
             return@withContext BookingResult.InPast
         }
 
+        // A tenant can only book an approved property.
         val property = properties.getProperty(propertyId)
 
         if (property == null || !property.isApproved) {
             return@withContext BookingResult.PropertyUnavailable
         }
 
-        if (isSlotBooked(propertyId, date, slot, 0L)) {
+        // Check whether another tenant booked this property slot.
+        if (
+            viewingDao.countSlotConflicts(
+                propertyId,
+                date,
+                slot,
+                0L
+            ) > 0
+        ) {
             return@withContext BookingResult.SlotTaken
         }
 
-        if (database.tenantHasViewingAt(tenantId, date, slot, 0L)) {
+        // Prevent the same tenant from booking two viewings
+        // at the same date and time.
+        if (
+            viewingDao.countTenantConflicts(
+                tenantId,
+                date,
+                slot,
+                0L
+            ) > 0
+        ) {
             return@withContext BookingResult.TenantBusy
         }
 
-        val viewingId = database.insertViewing(
-            propertyId,
-            tenantId,
-            date,
-            slot
-        )
-
-        if (viewingId == -1L) {
-            BookingResult.SlotTaken
-        } else {
-            BookingResult.Success(
-                viewingId,
-                property.title,
-                date,
-                slot
+        try {
+            val viewingId = viewingDao.insert(
+                ViewingEntity(
+                    propertyId = propertyId,
+                    tenantId = tenantId,
+                    viewingDate = date,
+                    viewingSlot = slot
+                )
             )
+
+            if (viewingId == -1L) {
+                BookingResult.SlotTaken
+            } else {
+                BookingResult.Success(
+                    viewingId,
+                    property.title,
+                    date,
+                    slot
+                )
+            }
+
+        } catch (e: SQLiteConstraintException) {
+            BookingResult.SlotTaken
         }
     }
 
-    // UPDATE: Reschedule a viewing.
+    // UPDATE: Reschedule an existing viewing.
     suspend fun reschedule(
         viewingId: Long,
         tenantId: Long,
@@ -101,145 +127,132 @@ class ViewingRepository(
             )
 
         val slotTime = ViewingTime.toMillis(date, slot)
-            ?: return@withContext BookingResult.Failure("Invalid date or time.")
+            ?: return@withContext BookingResult.Failure(
+                "Invalid date or time."
+            )
 
         if (slotTime <= System.currentTimeMillis()) {
             return@withContext BookingResult.InPast
         }
 
-        if (isSlotBooked(existing.propertyId, date, slot, viewingId)) {
+        // Exclude this viewing from the conflict checks.
+        if (
+            viewingDao.countSlotConflicts(
+                existing.propertyId,
+                date,
+                slot,
+                viewingId
+            ) > 0
+        ) {
             return@withContext BookingResult.SlotTaken
         }
 
-        if (database.tenantHasViewingAt(tenantId, date, slot, viewingId)) {
+        if (
+            viewingDao.countTenantConflicts(
+                tenantId,
+                date,
+                slot,
+                viewingId
+            ) > 0
+        ) {
             return@withContext BookingResult.TenantBusy
         }
 
-        if (database.updateViewing(viewingId, tenantId, date, slot)) {
-            BookingResult.Success(
+        try {
+            val updated = viewingDao.updateForTenant(
                 viewingId,
-                existing.propertyTitle,
+                tenantId,
                 date,
                 slot
             )
-        } else {
+
+            if (updated > 0) {
+                BookingResult.Success(
+                    viewingId,
+                    existing.propertyTitle,
+                    date,
+                    slot
+                )
+            } else {
+                BookingResult.SlotTaken
+            }
+
+        } catch (e: SQLiteConstraintException) {
             BookingResult.SlotTaken
         }
     }
 
-    // DELETE: Cancel a viewing.
+    // DELETE: Cancel a viewing belonging to the specified tenant.
     suspend fun cancel(
         viewingId: Long,
         tenantId: Long
     ): Boolean = withContext(Dispatchers.IO) {
-        database.deleteViewing(viewingId, tenantId)
+
+        viewingDao.deleteForTenant(viewingId, tenantId) > 0
     }
 
-    // READ: Get a tenant's viewing requests, soonest first.
+    // READ: Get all viewings belonging to a tenant.
     suspend fun getViewings(
         tenantId: Long
     ): List<ViewingItem> = withContext(Dispatchers.IO) {
 
-        getTenantViewings(tenantId).use { cursor ->
-            val items = mutableListOf<ViewingItem>()
+        viewingDao.getByTenant(tenantId)
+            .mapNotNull { viewing ->
 
-            while (cursor.moveToNext()) {
-                items.add(toViewing(cursor))
-            }
+                // Preserve the old INNER JOIN behaviour.
+                val property = properties.getProperty(
+                    viewing.propertyId
+                ) ?: return@mapNotNull null
 
-            items.sortedBy {
-                ViewingTime.toMillis(it.date, it.timeSlot)
-                    ?: Long.MAX_VALUE
+                ViewingItem(
+                    id = viewing.viewingId,
+                    propertyId = viewing.propertyId,
+                    propertyTitle = property.title,
+                    propertyLocation = property.location,
+                    date = viewing.viewingDate,
+                    timeSlot = viewing.viewingSlot
+                )
             }
-        }
+            .sortedBy {
+                ViewingTime.toMillis(
+                    it.date,
+                    it.timeSlot
+                ) ?: Long.MAX_VALUE
+            }
     }
 
-    // READ: Get one viewing.
+    // READ: Get one viewing belonging to a specific tenant.
     suspend fun getViewing(
         viewingId: Long,
         tenantId: Long
     ): ViewingItem? = withContext(Dispatchers.IO) {
+
         findViewing(viewingId, tenantId)
     }
 
-    // Find a viewing belonging to a specific tenant.
-    private fun findViewing(
+    // Find a viewing and its associated property.
+    private suspend fun findViewing(
         viewingId: Long,
         tenantId: Long
     ): ViewingItem? {
-        return database.getViewingById(viewingId, tenantId).use { cursor ->
-            if (cursor.moveToFirst()) {
-                toViewing(cursor)
-            } else {
-                null
-            }
-        }
-    }
 
-    // Check whether a slot is already booked.
-    private fun isSlotBooked(
-        propertyId: Long,
-        date: String,
-        slot: String,
-        excludeViewingId: Long
-    ): Boolean {
-        return database.getBookedSlots(
-            propertyId,
-            date,
-            excludeViewingId
-        ).use { cursor ->
+        val viewing = viewingDao.getById(
+            viewingId,
+            tenantId
+        ) ?: return null
 
-            var found = false
+        // Match the old INNER JOIN behaviour.
+        val property = properties.getProperty(
+            viewing.propertyId
+        ) ?: return null
 
-            while (cursor.moveToNext()) {
-                if (cursor.getString(0) == slot) {
-                    found = true
-                    break
-                }
-            }
-
-            found
-        }
-    }
-
-    // Convert a database row into a ViewingItem.
-    private fun toViewing(cursor: Cursor): ViewingItem {
         return ViewingItem(
-            id = cursor.getLong(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_VIEWING_ID
-                )
-            ),
-            propertyId = cursor.getLong(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_PROPERTY_ID
-                )
-            ),
-            propertyTitle = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_PROPERTY_TITLE
-                )
-            ),
-            propertyLocation = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_PROPERTY_LOCATION
-                )
-            ),
-            date = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_VIEWING_DATE
-                )
-            ),
-            timeSlot = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_VIEWING_SLOT
-                )
-            )
+            id = viewing.viewingId,
+            propertyId = viewing.propertyId,
+            propertyTitle = property.title,
+            propertyLocation = property.location,
+            date = viewing.viewingDate,
+            timeSlot = viewing.viewingSlot
         )
-    }
-
-    // Access the existing tenant viewing query through the database helper.
-    private fun getTenantViewings(tenantId: Long): Cursor {
-        return database.getTenantViewings(tenantId)
     }
 }

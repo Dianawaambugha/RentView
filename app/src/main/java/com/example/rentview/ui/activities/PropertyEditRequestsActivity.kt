@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
@@ -14,16 +10,28 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 
 class PropertyEditRequestsActivity : AppCompatActivity() {
 
-    private lateinit var databaseHelper: UserDatabaseHelper
+    companion object {
+        private const val STATUS_PENDING = "PENDING"
+        private const val STATUS_APPROVED = "APPROVED"
+        private const val STATUS_REJECTED = "REJECTED"
+    }
+
+    private lateinit var database: RentViewDatabase
     private lateinit var requestsContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        databaseHelper = UserDatabaseHelper.getInstance(this)
+        database = RentViewDatabase.getInstance(applicationContext)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -70,201 +78,176 @@ class PropertyEditRequestsActivity : AppCompatActivity() {
         displayEditRequests()
     }
 
+    override fun onResume() {
+        super.onResume()
+
+        if (::requestsContainer.isInitialized) {
+            displayEditRequests()
+        }
+    }
+
     private fun displayEditRequests() {
 
         requestsContainer.removeAllViews()
 
-        databaseHelper.getPendingPropertyEdits().use { cursor ->
+        lifecycleScope.launch {
 
-            if (cursor.count == 0) {
+            try {
 
-                val emptyMessage = TextView(this).apply {
-                    text = "No pending property edit requests."
-                    textSize = 17f
-                    gravity = Gravity.CENTER
-                    setPadding(0, 30, 0, 30)
+                val requests = withContext(Dispatchers.IO) {
+
+                    val pendingRequests = database.propertyEditRequestDao()
+                        .getByStatus(STATUS_PENDING)
+
+                    pendingRequests.map { request ->
+
+                        val property = database.propertyDao()
+                            .getById(request.propertyId)
+
+                        val owner = property?.let {
+                            database.userDao().getById(it.ownerId)
+                        }
+
+                        Triple(request, property, owner)
+                    }
                 }
 
-                requestsContainer.addView(emptyMessage)
-                return
-            }
+                if (requests.isEmpty()) {
 
-            val editIdIndex =
-                cursor.getColumnIndexOrThrow("edit_id")
+                    val emptyMessage = TextView(
+                        this@PropertyEditRequestsActivity
+                    ).apply {
+                        text = "No pending property edit requests."
+                        textSize = 17f
+                        gravity = Gravity.CENTER
+                        setPadding(0, 30, 0, 30)
+                    }
 
-            val propertyIdIndex =
-                cursor.getColumnIndexOrThrow("property_id")
-
-            val proposedTitleIndex =
-                cursor.getColumnIndexOrThrow("proposed_title")
-
-            val proposedLocationIndex =
-                cursor.getColumnIndexOrThrow("proposed_location")
-
-            val proposedRentIndex =
-                cursor.getColumnIndexOrThrow("proposed_rent")
-
-            val proposedBedroomsIndex =
-                cursor.getColumnIndexOrThrow("proposed_bedrooms")
-
-            val proposedDescriptionIndex =
-                cursor.getColumnIndexOrThrow("proposed_description")
-
-            val currentTitleIndex =
-                cursor.getColumnIndexOrThrow("current_title")
-
-            val currentLocationIndex =
-                cursor.getColumnIndexOrThrow("current_location")
-
-            val currentRentIndex =
-                cursor.getColumnIndexOrThrow("current_rent")
-
-            val currentBedroomsIndex =
-                cursor.getColumnIndexOrThrow("current_bedrooms")
-
-            val currentDescriptionIndex =
-                cursor.getColumnIndexOrThrow("current_description")
-
-            val ownerNameIndex =
-                cursor.getColumnIndexOrThrow("owner_name")
-
-            val ownerEmailIndex =
-                cursor.getColumnIndexOrThrow("owner_email")
-
-            while (cursor.moveToNext()) {
-
-                val editId = cursor.getLong(editIdIndex)
-
-                val propertyId =
-                    cursor.getLong(propertyIdIndex)
-
-                val proposedTitle =
-                    cursor.getString(proposedTitleIndex)
-
-                val proposedLocation =
-                    cursor.getString(proposedLocationIndex)
-
-                val proposedRent =
-                    cursor.getDouble(proposedRentIndex)
-
-                val proposedBedrooms =
-                    cursor.getInt(proposedBedroomsIndex)
-
-                val proposedDescription =
-                    cursor.getString(proposedDescriptionIndex)
-
-                val currentTitle =
-                    cursor.getString(currentTitleIndex)
-
-                val currentLocation =
-                    cursor.getString(currentLocationIndex)
-
-                val currentRent =
-                    cursor.getDouble(currentRentIndex)
-
-                val currentBedrooms =
-                    cursor.getInt(currentBedroomsIndex)
-
-                val currentDescription =
-                    cursor.getString(currentDescriptionIndex)
-
-                val ownerName =
-                    cursor.getString(ownerNameIndex)
-
-                val ownerEmail =
-                    cursor.getString(ownerEmailIndex)
-
-                val card = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(20, 20, 20, 20)
-                    setBackgroundColor(0xFFF1F1F1.toInt())
+                    requestsContainer.addView(emptyMessage)
+                    return@launch
                 }
 
-                val details = TextView(this).apply {
+                requests.forEach { (request, property, owner) ->
 
-                    text = """
-                        PROPERTY EDIT REQUEST #$editId
+                    if (property == null) {
+                        return@forEach
+                    }
 
-                        Property ID: $propertyId
+                    val editId = request.editId
 
-                        OWNER INFORMATION
+                    val ownerName = owner?.fullName ?: "Unknown owner"
+                    val ownerEmail = owner?.email ?: "Unavailable"
 
-                        Owner Name: $ownerName
-                        Owner Email: $ownerEmail
+                    val card = LinearLayout(
+                        this@PropertyEditRequestsActivity
+                    ).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(20, 20, 20, 20)
+                        setBackgroundColor(0xFFF1F1F1.toInt())
+                    }
 
-                        CURRENT PROPERTY INFORMATION
+                    val details = TextView(
+                        this@PropertyEditRequestsActivity
+                    ).apply {
 
-                        Title: $currentTitle
-                        Location: $currentLocation
-                        Monthly Rent: KES ${"%,.2f".format(currentRent)}
-                        Bedrooms: $currentBedrooms
-                        Description: $currentDescription
+                        text = """
+                            PROPERTY EDIT REQUEST #$editId
 
-                        PROPOSED CHANGES
+                            Property ID: ${request.propertyId}
 
-                        Title: $proposedTitle
-                        Location: $proposedLocation
-                        Monthly Rent: KES ${"%,.2f".format(proposedRent)}
-                        Bedrooms: $proposedBedrooms
-                        Description: $proposedDescription
+                            OWNER INFORMATION
 
-                        Status: PENDING
-                    """.trimIndent()
+                            Owner Name: $ownerName
+                            Owner Email: $ownerEmail
 
-                    textSize = 15f
-                    setTextColor(0xFF222222.toInt())
-                }
+                            CURRENT PROPERTY INFORMATION
 
-                card.addView(details)
+                            Title: ${property.title}
+                            Location: ${property.location}
+                            Monthly Rent: KES ${String.format(Locale.getDefault(), "%,.2f", property.rent)}
+                            Bedrooms: ${property.bedrooms}
+                            Description: ${property.description}
 
-                val buttonLayout = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                }
+                            PROPOSED CHANGES
 
-                val approveButton = Button(this).apply {
-                    text = "Approve"
-                }
+                            Title: ${request.proposedTitle}
+                            Location: ${request.proposedLocation}
+                            Monthly Rent: KES ${String.format(Locale.getDefault(), "%,.2f", request.proposedRent)}
+                            Bedrooms: ${request.proposedBedrooms}
+                            Description: ${request.proposedDescription}
 
-                val rejectButton = Button(this).apply {
-                    text = "Reject"
-                }
+                            Status: PENDING
+                        """.trimIndent()
 
-                approveButton.setOnClickListener {
-                    confirmDecision(editId, true)
-                }
+                        textSize = 15f
+                        setTextColor(0xFF222222.toInt())
+                    }
 
-                rejectButton.setOnClickListener {
-                    confirmDecision(editId, false)
-                }
+                    card.addView(details)
 
-                buttonLayout.addView(
-                    approveButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
+                    val buttonLayout = LinearLayout(
+                        this@PropertyEditRequestsActivity
+                    ).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                    }
+
+                    val approveButton = Button(
+                        this@PropertyEditRequestsActivity
+                    ).apply {
+                        text = "Approve"
+                    }
+
+                    val rejectButton = Button(
+                        this@PropertyEditRequestsActivity
+                    ).apply {
+                        text = "Reject"
+                    }
+
+                    approveButton.setOnClickListener {
+                        confirmDecision(editId, true)
+                    }
+
+                    rejectButton.setOnClickListener {
+                        confirmDecision(editId, false)
+                    }
+
+                    buttonLayout.addView(
+                        approveButton,
+                        LinearLayout.LayoutParams(
+                            0,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            1f
+                        )
                     )
-                )
 
-                buttonLayout.addView(
-                    rejectButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
+                    buttonLayout.addView(
+                        rejectButton,
+                        LinearLayout.LayoutParams(
+                            0,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            1f
+                        )
                     )
-                )
 
-                card.addView(buttonLayout)
+                    card.addView(buttonLayout)
 
-                val cardParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = 20
+                    val cardParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        bottomMargin = 20
+                    }
+
+                    requestsContainer.addView(card, cardParams)
                 }
 
-                requestsContainer.addView(card, cardParams)
+            } catch (e: Exception) {
+
+                Toast.makeText(
+                    this@PropertyEditRequestsActivity,
+                    "Unable to load edit requests: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -281,32 +264,93 @@ class PropertyEditRequestsActivity : AppCompatActivity() {
             .setMessage("Are you sure you want to $action this property edit?")
             .setPositiveButton("Yes") { _, _ ->
 
-                val success = if (approve) {
-                    databaseHelper.approvePropertyEdit(editId)
-                } else {
-                    databaseHelper.rejectPropertyEdit(editId)
-                }
+                lifecycleScope.launch {
 
-                if (success) {
+                    try {
 
-                    Toast.makeText(
-                        this,
-                        if (approve)
-                            "Property changes approved."
-                        else
-                            "Property changes rejected.",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                        val success = withContext(Dispatchers.IO) {
 
-                    displayEditRequests()
+                            val editDao = database.propertyEditRequestDao()
+                            val propertyDao = database.propertyDao()
 
-                } else {
+                            val request = editDao.getById(editId)
 
-                    Toast.makeText(
-                        this,
-                        "Unable to process this request.",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                            if (request == null ||
+                                request.editStatus != STATUS_PENDING
+                            ) {
+                                false
+                            } else {
+
+                                if (approve) {
+
+                                    val property = propertyDao.getById(
+                                        request.propertyId
+                                    )
+
+                                    if (property == null) {
+                                        false
+                                    } else {
+
+                                        val updatedProperty = property.copy(
+                                            title = request.proposedTitle,
+                                            location = request.proposedLocation,
+                                            rent = request.proposedRent,
+                                            bedrooms = request.proposedBedrooms,
+                                            description = request.proposedDescription
+                                        )
+
+                                        propertyDao.update(updatedProperty)
+
+                                        editDao.updateStatus(
+                                            editId,
+                                            STATUS_APPROVED
+                                        )
+
+                                        true
+                                    }
+
+                                } else {
+
+                                    editDao.updateStatus(
+                                        editId,
+                                        STATUS_REJECTED
+                                    )
+
+                                    true
+                                }
+                            }
+                        }
+
+                        if (success) {
+
+                            Toast.makeText(
+                                this@PropertyEditRequestsActivity,
+                                if (approve)
+                                    "Property changes approved."
+                                else
+                                    "Property changes rejected.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            displayEditRequests()
+
+                        } else {
+
+                            Toast.makeText(
+                                this@PropertyEditRequestsActivity,
+                                "Unable to process this request.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                    } catch (e: Exception) {
+
+                        Toast.makeText(
+                            this@PropertyEditRequestsActivity,
+                            "Request processing failed: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)

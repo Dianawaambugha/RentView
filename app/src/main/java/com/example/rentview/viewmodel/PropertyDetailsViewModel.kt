@@ -8,7 +8,6 @@ import com.example.rentview.ui.adapters.*
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.data.UserDatabaseHelper
 import com.example.rentview.data.PropertyItem
 import com.example.rentview.data.PropertyRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +24,7 @@ data class PropertyDetailsState(
 class PropertyDetailsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = PropertyRepository(
-        UserDatabaseHelper.getInstance(application)
+        RentViewDatabase.getInstance(application)
     )
 
     private val _state = MutableStateFlow(PropertyDetailsState())

@@ -1,18 +1,25 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.PropertyEditRequestEntity
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class EditPropertyActivity : AppCompatActivity() {
 
-    private lateinit var databaseHelper: UserDatabaseHelper
+    private lateinit var database: RentViewDatabase
 
     private var propertyId: Long = -1L
     private var ownerId: Long = -1L
@@ -28,7 +35,7 @@ class EditPropertyActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_edit_property)
 
-        databaseHelper = UserDatabaseHelper(this)
+        database = RentViewDatabase.getInstance(this)
 
         propertyId = intent.getLongExtra("PROPERTY_ID", -1L)
         ownerId = intent.getLongExtra("OWNER_ID", -1L)
@@ -59,72 +66,33 @@ class EditPropertyActivity : AppCompatActivity() {
     }
 
     private fun loadPropertyDetails() {
-        val cursor = databaseHelper.getOwnerProperties(ownerId)
+        lifecycleScope.launch {
 
-        cursor.use {
-            while (it.moveToNext()) {
-                val currentPropertyId = it.getLong(
-                    it.getColumnIndexOrThrow(
-                        UserDatabaseHelper.COL_PROPERTY_ID
-                    )
-                )
-
-                if (currentPropertyId == propertyId) {
-                    titleInput.setText(
-                        it.getString(
-                            it.getColumnIndexOrThrow(
-                                UserDatabaseHelper.COL_PROPERTY_TITLE
-                            )
-                        )
-                    )
-
-                    locationInput.setText(
-                        it.getString(
-                            it.getColumnIndexOrThrow(
-                                UserDatabaseHelper.COL_PROPERTY_LOCATION
-                            )
-                        )
-                    )
-
-                    rentInput.setText(
-                        it.getDouble(
-                            it.getColumnIndexOrThrow(
-                                UserDatabaseHelper.COL_PROPERTY_RENT
-                            )
-                        ).toString()
-                    )
-
-                    bedroomsInput.setText(
-                        it.getInt(
-                            it.getColumnIndexOrThrow(
-                                UserDatabaseHelper.COL_PROPERTY_BEDROOMS
-                            )
-                        ).toString()
-                    )
-
-                    descriptionInput.setText(
-                        it.getString(
-                            it.getColumnIndexOrThrow(
-                                UserDatabaseHelper.COL_PROPERTY_DESCRIPTION
-                            )
-                        )
-                    )
-
-                    return
-                }
+            val property = withContext(Dispatchers.IO) {
+                database.propertyDao().getById(propertyId)
             }
+
+            if (property == null || property.ownerId != ownerId) {
+                Toast.makeText(
+                    this@EditPropertyActivity,
+                    "Property not found in your listings.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                finish()
+                return@launch
+            }
+
+            titleInput.setText(property.title)
+            locationInput.setText(property.location)
+            rentInput.setText(property.rent.toString())
+            bedroomsInput.setText(property.bedrooms.toString())
+            descriptionInput.setText(property.description)
         }
-
-        Toast.makeText(
-            this,
-            "Property not found in your listings.",
-            Toast.LENGTH_LONG
-        ).show()
-
-        finish()
     }
 
     private fun submitPropertyChanges() {
+
         val title = titleInput.text.toString().trim()
         val location = locationInput.text.toString().trim()
         val rentText = rentInput.text.toString().trim()
@@ -159,36 +127,69 @@ class EditPropertyActivity : AppCompatActivity() {
             return
         }
 
-        val editRequestId = databaseHelper.submitPropertyEdit(
-            ownerId = ownerId,
-            propertyId = propertyId,
-            title = title,
-            location = location,
-            rent = rent,
-            bedrooms = bedrooms,
-            description = description,
-            photoUris = emptyList()
-        )
+        submitButton.isEnabled = false
 
-        if (editRequestId != -1L) {
-            Toast.makeText(
-                this,
-                "Changes submitted for admin approval.",
-                Toast.LENGTH_LONG
-            ).show()
+        lifecycleScope.launch {
 
-            finish()
-        } else {
-            Toast.makeText(
-                this,
-                "Could not submit changes. Check that the property is approved and has no pending edit request.",
-                Toast.LENGTH_LONG
-            ).show()
+            val editRequestId = withContext(Dispatchers.IO) {
+
+                val property = database.propertyDao().getById(propertyId)
+
+                if (
+                    property == null ||
+                    property.ownerId != ownerId ||
+                    property.propertyStatus != "APPROVED"
+                ) {
+                    return@withContext -1L
+                }
+
+                val existingRequests =
+                    database.propertyEditRequestDao().getByProperty(propertyId)
+
+                if (existingRequests.any { it.editStatus == "PENDING" }) {
+                    return@withContext -1L
+                }
+
+                val request = PropertyEditRequestEntity(
+                    propertyId = propertyId,
+                    proposedTitle = title,
+                    proposedLocation = location,
+                    proposedRent = rent,
+                    proposedBedrooms = bedrooms,
+                    proposedDescription = description,
+                    editStatus = "PENDING",
+                    createdAt = currentTimestamp()
+                )
+
+                database.propertyEditRequestDao().insert(request)
+            }
+
+            submitButton.isEnabled = true
+
+            if (editRequestId > 0) {
+                Toast.makeText(
+                    this@EditPropertyActivity,
+                    "Changes submitted for admin approval.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                finish()
+            } else {
+                Toast.makeText(
+                    this@EditPropertyActivity,
+                    "Could not submit changes. Check that the property is approved and has no pending edit request.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
-    override fun onDestroy() {
-        databaseHelper.close()
-        super.onDestroy()
+    private fun currentTimestamp(): String {
+        val formatter = SimpleDateFormat(
+            "yyyy-MM-dd HH:mm:ss",
+            Locale.US
+        )
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date())
     }
 }

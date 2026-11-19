@@ -6,15 +6,18 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.example.rentview.R
-import com.example.rentview.data.UserDatabaseHelper
 
 class HomeActivity : AppCompatActivity() {
+
+    companion object {
+        private const val ROLE_TENANT = "Tenant"
+        private const val ROLE_OWNER = "Property Owner"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
-        // Get the views from the home screen
         val greeting = findViewById<TextView>(R.id.tvHomeGreeting)
         val userRole = findViewById<TextView>(R.id.tvHomeRole)
         val dashboardTitle = findViewById<TextView>(R.id.tvDashboardTitle)
@@ -23,17 +26,14 @@ class HomeActivity : AppCompatActivity() {
         val profile = findViewById<TextView>(R.id.tvHomeProfile)
         val logoutButton = findViewById<Button>(R.id.btnLogout)
 
-        // Read the user's details passed from the login screen
         val userName = intent.getStringExtra("USER_NAME") ?: "User"
-        val role = intent.getStringExtra("USER_ROLE") ?: UserDatabaseHelper.ROLE_TENANT
+        val role = intent.getStringExtra("USER_ROLE") ?: ROLE_TENANT
         val userId = intent.getLongExtra("USER_ID", -1L)
 
-        // Display the user's name and role
         greeting.text = "Welcome, $userName!"
         userRole.text = "Account type: $role"
 
-        // Display different dashboard options for each role
-        if (role == UserDatabaseHelper.ROLE_OWNER) {
+        if (role == ROLE_OWNER) {
 
             dashboardTitle.text = "Property Owner Dashboard"
             primaryButton.text = "Add a Property"
@@ -50,10 +50,9 @@ class HomeActivity : AppCompatActivity() {
                 "Discover rental properties and manage your viewing appointments."
         }
 
-        // Primary button: Add Property for owners, Explore Properties for tenants
         primaryButton.setOnClickListener {
 
-            if (role == UserDatabaseHelper.ROLE_OWNER) {
+            if (role == ROLE_OWNER) {
 
                 val addPropertyIntent = Intent(
                     this,
@@ -63,7 +62,7 @@ class HomeActivity : AppCompatActivity() {
                 addPropertyIntent.putExtra("USER_ID", userId)
                 startActivity(addPropertyIntent)
 
-            } else if (role == UserDatabaseHelper.ROLE_TENANT) {
+            } else if (role == ROLE_TENANT) {
 
                 val propertyListIntent = Intent(
                     this,
@@ -75,10 +74,9 @@ class HomeActivity : AppCompatActivity() {
             }
         }
 
-        // Secondary button: My Properties for owners, My Viewings for tenants
         secondaryButton.setOnClickListener {
 
-            if (role == UserDatabaseHelper.ROLE_OWNER) {
+            if (role == ROLE_OWNER) {
 
                 val propertiesIntent = Intent(
                     this,
@@ -88,7 +86,7 @@ class HomeActivity : AppCompatActivity() {
                 propertiesIntent.putExtra("USER_ID", userId)
                 startActivity(propertiesIntent)
 
-            } else if (role == UserDatabaseHelper.ROLE_TENANT) {
+            } else if (role == ROLE_TENANT) {
 
                 val viewingsIntent = Intent(
                     this,
@@ -100,7 +98,6 @@ class HomeActivity : AppCompatActivity() {
             }
         }
 
-        // Log out and return to the welcome screen
         logoutButton.setOnClickListener {
             finish()
         }

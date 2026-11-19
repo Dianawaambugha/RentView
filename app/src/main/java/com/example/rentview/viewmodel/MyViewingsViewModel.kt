@@ -8,7 +8,6 @@ import com.example.rentview.ui.adapters.*
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.data.UserDatabaseHelper
 import com.example.rentview.data.PropertyRepository
 import com.example.rentview.data.ViewingItem
 import com.example.rentview.data.ViewingRepository
@@ -26,9 +25,9 @@ sealed class MyViewingsState {
 
 class MyViewingsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = UserDatabaseHelper.getInstance(application)
-    private val repository = ViewingRepository(database, PropertyRepository(database))
-
+    private val database = RentViewDatabase.getInstance(application)
+    private val propertyRepository = PropertyRepository(database)
+    private val repository = ViewingRepository(database, propertyRepository)
     private val _state = MutableStateFlow<MyViewingsState>(MyViewingsState.Loading)
     val state: StateFlow<MyViewingsState> = _state
 

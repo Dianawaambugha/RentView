@@ -1,10 +1,7 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.Button
@@ -13,15 +10,27 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class OwnerApprovalsActivity : AppCompatActivity() {
+
+    companion object {
+        private const val STATUS_PENDING = "PENDING"
+        private const val STATUS_APPROVED = "APPROVED"
+        private const val STATUS_REJECTED = "REJECTED"
+    }
+
     private lateinit var ownerList: LinearLayout
-    private lateinit var databaseHelper: UserDatabaseHelper
+    private lateinit var database: RentViewDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        databaseHelper = UserDatabaseHelper(this)
+        database = RentViewDatabase.getInstance(applicationContext)
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
@@ -41,6 +50,7 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         ownerList.orientation = LinearLayout.VERTICAL
 
         scrollView.addView(ownerList)
+
         root.addView(
             scrollView,
             LinearLayout.LayoutParams(
@@ -53,7 +63,7 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         val backButton = Button(this)
         backButton.text = "Back to Dashboard"
         backButton.setOnClickListener {
-            val intent = android.content.Intent(
+            val intent = Intent(
                 this,
                 AdminDashboardActivity::class.java
             )
@@ -63,48 +73,59 @@ class OwnerApprovalsActivity : AppCompatActivity() {
 
         root.addView(backButton)
 
-
         setContentView(root)
 
         loadPendingOwners()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        if (::ownerList.isInitialized) {
+            loadPendingOwners()
+        }
     }
 
     private fun loadPendingOwners() {
 
         ownerList.removeAllViews()
 
-        val cursor = databaseHelper.getPendingOwners()
+        lifecycleScope.launch {
 
-        cursor.use {
+            try {
 
-            if (it.count == 0) {
-                val emptyMessage = TextView(this)
-                emptyMessage.text = "There are no owners awaiting approval."
-                emptyMessage.textSize = 17f
-                emptyMessage.setPadding(0, 20, 0, 20)
-                ownerList.addView(emptyMessage)
-                return
-            }
+                val pendingOwners = withContext(Dispatchers.IO) {
+                    database.userDao().getPendingOwners()
+                }
 
-            while (it.moveToNext()) {
+                if (pendingOwners.isEmpty()) {
 
-                val ownerId = it.getLong(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_ID)
-                )
+                    val emptyMessage = TextView(this@OwnerApprovalsActivity)
+                    emptyMessage.text =
+                        "There are no owners awaiting approval."
+                    emptyMessage.textSize = 17f
+                    emptyMessage.setPadding(0, 20, 0, 20)
+                    ownerList.addView(emptyMessage)
 
-                val name = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_NAME)
-                )
+                    return@launch
+                }
 
-                val email = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_EMAIL)
-                )
+                pendingOwners.forEach { owner ->
+                    addOwnerCard(
+                        owner.id,
+                        owner.fullName,
+                        owner.email,
+                        owner.phone
+                    )
+                }
 
-                val phone = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_PHONE)
-                )
+            } catch (e: Exception) {
 
-                addOwnerCard(ownerId, name, email, phone)
+                Toast.makeText(
+                    this@OwnerApprovalsActivity,
+                    "Unable to load pending owners: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -122,7 +143,8 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         card.setBackgroundColor(0xFFFFFFFF.toInt())
 
         val details = TextView(this)
-        details.text = "Name: $name\nEmail: $email\nPhone: $phone\nStatus: PENDING"
+        details.text =
+            "Name: $name\nEmail: $email\nPhone: $phone\nStatus: PENDING"
         details.textSize = 16f
         details.setTextColor(0xFF222222.toInt())
         details.setPadding(0, 0, 0, 12)
@@ -137,24 +159,32 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         approveButton.text = "Approve"
 
         approveButton.setOnClickListener {
-            confirmDecision(ownerId, name, UserDatabaseHelper.STATUS_APPROVED)
+            confirmDecision(ownerId, name, STATUS_APPROVED)
         }
 
         val rejectButton = Button(this)
         rejectButton.text = "Reject"
 
         rejectButton.setOnClickListener {
-            confirmDecision(ownerId, name, UserDatabaseHelper.STATUS_REJECTED)
+            confirmDecision(ownerId, name, STATUS_REJECTED)
         }
 
         buttons.addView(
             approveButton,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         )
 
         buttons.addView(
             rejectButton,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         )
 
         card.addView(buttons)
@@ -175,7 +205,7 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         status: String
     ) {
 
-        val action = if (status == UserDatabaseHelper.STATUS_APPROVED) {
+        val action = if (status == STATUS_APPROVED) {
             "approve"
         } else {
             "reject"
@@ -186,45 +216,67 @@ class OwnerApprovalsActivity : AppCompatActivity() {
             .setMessage("Are you sure you want to $action $ownerName?")
             .setPositiveButton("Confirm") { _, _ ->
 
-                val updated = databaseHelper.updateOwnerApproval(
-                    ownerId,
-                    status
-                )
+                lifecycleScope.launch {
 
-                if (updated) {
+                    try {
 
-                    val message = if (
-                        status == UserDatabaseHelper.STATUS_APPROVED
-                    ) {
-                        "$ownerName has been approved."
-                    } else {
-                        "$ownerName has been rejected."
+                        val updated = withContext(Dispatchers.IO) {
+
+                            val userDao = database.userDao()
+
+                            val owner = userDao.getById(ownerId)
+                            if (owner == null ||
+                                owner.role != "Property Owner" ||
+                                owner.approvalStatus != STATUS_PENDING
+                            ) {
+                                false
+                            } else {
+
+                                userDao.updateApprovalStatus(
+                                    ownerId,
+                                    status
+                                )
+
+                                userDao.getById(ownerId)?.approvalStatus == status
+                            }
+                        }
+
+                        if (updated) {
+
+                            val message = if (status == STATUS_APPROVED) {
+                                "$ownerName has been approved."
+                            } else {
+                                "$ownerName has been rejected."
+                            }
+
+                            Toast.makeText(
+                                this@OwnerApprovalsActivity,
+                                message,
+                                Toast.LENGTH_LONG
+                            ).show()
+
+                            loadPendingOwners()
+
+                        } else {
+
+                            Toast.makeText(
+                                this@OwnerApprovalsActivity,
+                                "Unable to update the owner's status.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+
+                    } catch (e: Exception) {
+
+                        Toast.makeText(
+                            this@OwnerApprovalsActivity,
+                            "Approval update failed: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-
-                    Toast.makeText(
-                        this,
-                        message,
-                        Toast.LENGTH_LONG
-                    ).show()
-
-                    loadPendingOwners()
-
-                } else {
-
-                    Toast.makeText(
-                        this,
-                        "Unable to update the owner's status.",
-                        Toast.LENGTH_LONG
-                    ).show()
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
-
-    override fun onDestroy() {
-        databaseHelper.close()
-        super.onDestroy()
-    }
-
 }
