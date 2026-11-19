@@ -8,7 +8,6 @@ import com.example.rentview.ui.adapters.*
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.data.UserDatabaseHelper
 import com.example.rentview.data.BookingResult
 import com.example.rentview.data.PropertyRepository
 import com.example.rentview.data.ViewingRepository
@@ -34,7 +33,7 @@ data class ScheduleState(
 // If viewingId > 0 the screen is in "reschedule" mode.
 class ScheduleViewingViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = UserDatabaseHelper.getInstance(application)
+    private val database = RentViewDatabase.getInstance(application)
     private val propertyRepository = PropertyRepository(database)
     private val viewingRepository = ViewingRepository(database, propertyRepository)
 

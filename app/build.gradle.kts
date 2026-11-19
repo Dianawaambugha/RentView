@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -23,13 +24,27 @@ android {
 }
 
 dependencies {
+    // Android dependencies
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+
+    // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Room Database
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
+
+    // Unit testing
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
+
+    // Android instrumentation testing
+    androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:core:1.7.0")
 }

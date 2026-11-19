@@ -1,10 +1,7 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.Button
@@ -13,17 +10,28 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class PropertyApprovalsActivity : AppCompatActivity() {
 
-    private lateinit var databaseHelper: UserDatabaseHelper
+    companion object {
+        private const val STATUS_PENDING = "PENDING"
+        private const val STATUS_APPROVED = "APPROVED"
+        private const val STATUS_REJECTED = "REJECTED"
+    }
+
+    private lateinit var database: RentViewDatabase
     private lateinit var propertyContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        databaseHelper = UserDatabaseHelper(this)
+        database = RentViewDatabase.getInstance(applicationContext)
 
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -63,7 +71,7 @@ class PropertyApprovalsActivity : AppCompatActivity() {
             isAllCaps = false
 
             setOnClickListener {
-                val intent = android.content.Intent(
+                val intent = Intent(
                     this@PropertyApprovalsActivity,
                     AdminDashboardActivity::class.java
                 )
@@ -83,72 +91,75 @@ class PropertyApprovalsActivity : AppCompatActivity() {
         setContentView(rootLayout)
 
         loadPendingProperties()
+    }
 
+    override fun onResume() {
+        super.onResume()
+
+        if (::propertyContainer.isInitialized) {
+            loadPendingProperties()
+        }
     }
 
     private fun loadPendingProperties() {
+
         propertyContainer.removeAllViews()
 
-        val cursor = databaseHelper.getPendingProperties()
+        lifecycleScope.launch {
 
-        cursor.use {
-            if (!it.moveToFirst()) {
-                val emptyMessage = TextView(this).apply {
-                    text = "No property listings are waiting for review."
-                    textSize = 17f
-                    gravity = Gravity.CENTER
-                    setPadding(12, 32, 12, 32)
+            try {
+
+                val pendingProperties = withContext(Dispatchers.IO) {
+
+                    val properties = database.propertyDao()
+                        .getByStatus(STATUS_PENDING)
+
+                    properties.map { property ->
+
+                        val owner = database.userDao()
+                            .getById(property.ownerId)
+
+                        property to owner
+                    }
                 }
 
-                propertyContainer.addView(emptyMessage)
-                return
+                if (pendingProperties.isEmpty()) {
+
+                    val emptyMessage = TextView(
+                        this@PropertyApprovalsActivity
+                    ).apply {
+                        text = "No property listings are waiting for review."
+                        textSize = 17f
+                        gravity = Gravity.CENTER
+                        setPadding(12, 32, 12, 32)
+                    }
+
+                    propertyContainer.addView(emptyMessage)
+                    return@launch
+                }
+
+                pendingProperties.forEach { (property, owner) ->
+
+                    addPropertyCard(
+                        property.propertyId,
+                        property.title,
+                        property.location,
+                        property.rent,
+                        property.bedrooms,
+                        property.description,
+                        owner?.fullName ?: "Unknown owner",
+                        owner?.email ?: "Unavailable"
+                    )
+                }
+
+            } catch (e: Exception) {
+
+                Toast.makeText(
+                    this@PropertyApprovalsActivity,
+                    "Unable to load properties: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
-
-            do {
-                val propertyId = it.getLong(
-                    it.getColumnIndexOrThrow("property_id")
-                )
-
-                val title = it.getString(
-                    it.getColumnIndexOrThrow("title")
-                )
-
-                val location = it.getString(
-                    it.getColumnIndexOrThrow("location")
-                )
-
-                val rent = it.getDouble(
-                    it.getColumnIndexOrThrow("rent")
-                )
-
-                val bedrooms = it.getInt(
-                    it.getColumnIndexOrThrow("bedrooms")
-                )
-
-                val description = it.getString(
-                    it.getColumnIndexOrThrow("description")
-                )
-
-                val ownerName = it.getString(
-                    it.getColumnIndexOrThrow("owner_name")
-                )
-
-                val ownerEmail = it.getString(
-                    it.getColumnIndexOrThrow("owner_email")
-                )
-
-                addPropertyCard(
-                    propertyId,
-                    title,
-                    location,
-                    rent,
-                    bedrooms,
-                    description,
-                    ownerName,
-                    ownerEmail
-                )
-
-            } while (it.moveToNext())
         }
     }
 
@@ -162,6 +173,7 @@ class PropertyApprovalsActivity : AppCompatActivity() {
         ownerName: String,
         ownerEmail: String
     ) {
+
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 20, 20, 20)
@@ -170,22 +182,22 @@ class PropertyApprovalsActivity : AppCompatActivity() {
 
         val details = TextView(this).apply {
             text = """
-            Property: $title
+                Property: $title
 
-            Location: $location
+                Location: $location
 
-            Monthly Rent: KSh ${String.format(Locale.getDefault(), "%,.2f", rent)}
+                Monthly Rent: KSh ${String.format(Locale.getDefault(), "%,.2f", rent)}
 
-            Bedrooms: $bedrooms
+                Bedrooms: $bedrooms
 
-            Description: $description
+                Description: $description
 
-            Owner: $ownerName
+                Owner: $ownerName
 
-            Owner Email: $ownerEmail
+                Owner Email: $ownerEmail
 
-            Status: PENDING REVIEW
-        """.trimIndent()
+                Status: PENDING REVIEW
+            """.trimIndent()
 
             textSize = 16f
             setTextColor(android.graphics.Color.rgb(38, 55, 70))
@@ -232,7 +244,7 @@ class PropertyApprovalsActivity : AppCompatActivity() {
             confirmPropertyDecision(
                 propertyId,
                 title,
-                UserDatabaseHelper.STATUS_APPROVED
+                STATUS_APPROVED
             )
         }
 
@@ -240,7 +252,7 @@ class PropertyApprovalsActivity : AppCompatActivity() {
             confirmPropertyDecision(
                 propertyId,
                 title,
-                UserDatabaseHelper.STATUS_REJECTED
+                STATUS_REJECTED
             )
         }
     }
@@ -250,9 +262,12 @@ class PropertyApprovalsActivity : AppCompatActivity() {
         title: String,
         status: String
     ) {
-        val action = if (
-            status == UserDatabaseHelper.STATUS_APPROVED
-        ) "approve" else "reject"
+
+        val action = if (status == STATUS_APPROVED) {
+            "approve"
+        } else {
+            "reject"
+        }
 
         AlertDialog.Builder(this)
             .setTitle("Confirm Decision")
@@ -260,33 +275,61 @@ class PropertyApprovalsActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Confirm") { _, _ ->
 
-                val updated = databaseHelper.updatePropertyApproval(
-                    propertyId,
-                    status
-                )
+                lifecycleScope.launch {
 
-                if (updated) {
-                    Toast.makeText(
-                        this,
-                        "Property ${action}d successfully.",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    try {
 
-                    loadPendingProperties()
-                } else {
-                    Toast.makeText(
-                        this,
-                        "Could not update the property status.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                        val updated = withContext(Dispatchers.IO) {
+
+                            val property = database.propertyDao()
+                                .getById(propertyId)
+
+                            if (property == null ||
+                                property.propertyStatus != STATUS_PENDING
+                            ) {
+                                false
+                            } else {
+
+                                database.propertyDao().updateStatus(
+                                    propertyId,
+                                    status
+                                )
+
+                                database.propertyDao()
+                                    .getById(propertyId)
+                                    ?.propertyStatus == status
+                            }
+                        }
+
+                        if (updated) {
+
+                            Toast.makeText(
+                                this@PropertyApprovalsActivity,
+                                "Property ${action}d successfully.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            loadPendingProperties()
+
+                        } else {
+
+                            Toast.makeText(
+                                this@PropertyApprovalsActivity,
+                                "Could not update the property status.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+
+                    } catch (e: Exception) {
+
+                        Toast.makeText(
+                            this@PropertyApprovalsActivity,
+                            "Update failed: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
             .show()
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        databaseHelper.close()
-    }
-
 }

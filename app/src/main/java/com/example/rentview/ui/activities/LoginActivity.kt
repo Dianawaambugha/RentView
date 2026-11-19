@@ -1,18 +1,31 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.os.Bundle
+import android.util.Patterns
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 
 class LoginActivity : AppCompatActivity() {
+
+    companion object {
+        private const val ROLE_TENANT = "Tenant"
+        private const val ROLE_OWNER = "Property Owner"
+
+        private const val STATUS_PENDING = "PENDING"
+        private const val STATUS_APPROVED = "APPROVED"
+        private const val STATUS_REJECTED = "REJECTED"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,12 +47,12 @@ class LoginActivity : AppCompatActivity() {
             val passwordValue = password.text.toString()
 
             when {
+
                 emailValue.isEmpty() -> {
                     email.error = "Enter your email address"
                 }
 
-                !android.util.Patterns.EMAIL_ADDRESS
-                    .matcher(emailValue).matches() -> {
+                !Patterns.EMAIL_ADDRESS.matcher(emailValue).matches() -> {
                     email.error = "Enter a valid email address"
                 }
 
@@ -48,78 +61,71 @@ class LoginActivity : AppCompatActivity() {
                 }
 
                 else -> {
-                    val databaseHelper = UserDatabaseHelper(this)
 
-                    val cursor = databaseHelper.getUserDetails(
-                        emailValue,
-                        passwordValue
-                    )
+                    loginButton.isEnabled = false
 
-                    if (cursor != null) {
-                        cursor.use {
+                    lifecycleScope.launch {
 
-                            if (it.moveToFirst()) {
+                        try {
 
-                                val userId = it.getLong(
-                                    it.getColumnIndexOrThrow(
-                                        UserDatabaseHelper.COL_ID
-                                    )
+                            val user = withContext(Dispatchers.IO) {
+
+                                val database = RentViewDatabase.getInstance(
+                                    applicationContext
                                 )
 
-                                val userName = it.getString(
-                                    it.getColumnIndexOrThrow(
-                                        UserDatabaseHelper.COL_NAME
-                                    )
-                                )
+                                database.userDao().getByEmail(emailValue.lowercase())
+                            }
 
-                                val userRole = it.getString(
-                                    it.getColumnIndexOrThrow(
-                                        UserDatabaseHelper.COL_ROLE
-                                    )
-                                )
+                            if (user == null ||
+                                user.passwordHash != hashPassword(passwordValue)
+                            ) {
 
-                                val approvalStatus = it.getString(
-                                    it.getColumnIndexOrThrow(
-                                        UserDatabaseHelper.COL_APPROVAL_STATUS
-                                    )
-                                )
+                                Toast.makeText(
+                                    this@LoginActivity,
+                                    "Incorrect email or password.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+
+                            } else {
 
                                 when {
-                                    userRole == UserDatabaseHelper.ROLE_OWNER &&
-                                            approvalStatus == UserDatabaseHelper.STATUS_PENDING -> {
+
+                                    user.role == ROLE_OWNER &&
+                                            user.approvalStatus == STATUS_PENDING -> {
 
                                         Toast.makeText(
-                                            this,
+                                            this@LoginActivity,
                                             "Your account is awaiting administrator approval.",
                                             Toast.LENGTH_LONG
                                         ).show()
                                     }
 
-                                    userRole == UserDatabaseHelper.ROLE_OWNER &&
-                                            approvalStatus == UserDatabaseHelper.STATUS_REJECTED -> {
+                                    user.role == ROLE_OWNER &&
+                                            user.approvalStatus == STATUS_REJECTED -> {
 
                                         Toast.makeText(
-                                            this,
+                                            this@LoginActivity,
                                             "Your owner account was not approved. Please contact the administrator.",
                                             Toast.LENGTH_LONG
                                         ).show()
                                     }
 
-                                    userRole == UserDatabaseHelper.ROLE_TENANT ||
-                                            (userRole == UserDatabaseHelper.ROLE_OWNER &&
-                                                    approvalStatus == UserDatabaseHelper.STATUS_APPROVED) -> {
+                                    user.role == ROLE_TENANT ||
+                                            (user.role == ROLE_OWNER &&
+                                                    user.approvalStatus == STATUS_APPROVED) -> {
 
                                         val homeIntent = Intent(
-                                            this,
+                                            this@LoginActivity,
                                             HomeActivity::class.java
                                         )
 
-                                        homeIntent.putExtra("USER_ID", userId)
-                                        homeIntent.putExtra("USER_NAME", userName)
-                                        homeIntent.putExtra("USER_ROLE", userRole)
+                                        homeIntent.putExtra("USER_ID", user.id)
+                                        homeIntent.putExtra("USER_NAME", user.fullName)
+                                        homeIntent.putExtra("USER_ROLE", user.role)
                                         homeIntent.putExtra(
                                             "APPROVAL_STATUS",
-                                            approvalStatus
+                                            user.approvalStatus
                                         )
 
                                         startActivity(homeIntent)
@@ -127,27 +133,42 @@ class LoginActivity : AppCompatActivity() {
                                     }
 
                                     else -> {
+
                                         Toast.makeText(
-                                            this,
+                                            this@LoginActivity,
                                             "Your account status is invalid. Please contact the administrator.",
                                             Toast.LENGTH_LONG
                                         ).show()
                                     }
                                 }
-
-                            } else {
-                                Toast.makeText(
-                                    this,
-                                    "Incorrect email or password.",
-                                    Toast.LENGTH_LONG
-                                ).show()
                             }
+
+                        } catch (e: Exception) {
+
+                            Toast.makeText(
+                                this@LoginActivity,
+                                "Login failed: ${e.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+
+                        } finally {
+
+                            loginButton.isEnabled = true
                         }
                     }
-
-                    databaseHelper.close()
                 }
             }
+        }
+    }
+
+    private fun hashPassword(password: String): String {
+
+        val bytes = MessageDigest
+            .getInstance("SHA-256")
+            .digest(password.toByteArray())
+
+        return bytes.joinToString("") {
+            "%02x".format(it)
         }
     }
 }

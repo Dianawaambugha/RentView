@@ -1,27 +1,28 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import com.example.rentview.data.UserEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AllTenantsActivity : AppCompatActivity() {
-    private lateinit var databaseHelper: UserDatabaseHelper
+
+    private lateinit var database: RentViewDatabase
     private lateinit var tenantsContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        databaseHelper = UserDatabaseHelper.getInstance(this)
+        database = RentViewDatabase.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -42,12 +43,14 @@ class AllTenantsActivity : AppCompatActivity() {
         val scrollView = ScrollView(this).apply {
             addView(tenantsContainer)
         }
+
         val backButton = Button(this).apply {
             text = "Back to Dashboard"
             setOnClickListener { finish() }
         }
 
         mainLayout.addView(title)
+
         mainLayout.addView(
             scrollView,
             LinearLayout.LayoutParams(
@@ -56,20 +59,27 @@ class AllTenantsActivity : AppCompatActivity() {
                 1f
             )
         )
+
         mainLayout.addView(backButton)
 
         setContentView(mainLayout)
 
         displayTenants()
     }
+
     private fun displayTenants() {
-        tenantsContainer.removeAllViews()
 
-        val cursor = databaseHelper.getAllTenants()
+        lifecycleScope.launch {
 
-        cursor.use {
-            if (!it.moveToFirst()) {
-                val emptyMessage = TextView(this).apply {
+            val tenants = withContext(Dispatchers.IO) {
+                database.userDao().getAllTenants()
+            }
+
+            tenantsContainer.removeAllViews()
+
+            if (tenants.isEmpty()) {
+
+                val emptyMessage = TextView(this@AllTenantsActivity).apply {
                     text = "No registered tenants found."
                     textSize = 16f
                     gravity = Gravity.CENTER
@@ -77,56 +87,42 @@ class AllTenantsActivity : AppCompatActivity() {
                 }
 
                 tenantsContainer.addView(emptyMessage)
-                return
+                return@launch
             }
-            do {
-                val tenantId = it.getLong(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_ID)
-                )
 
-                val name = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_NAME)
-                )
-
-                val email = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_EMAIL)
-                )
-
-                val phone = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_PHONE)
-                )
-
-                val status = it.getString(
-                    it.getColumnIndexOrThrow(
-                        UserDatabaseHelper.COL_APPROVAL_STATUS
-                    )
-                )
-                val tenantCard = TextView(this).apply {
-                    text = """
-                        Tenant ID: $tenantId
-                        Name: $name
-                        Email: $email
-                        Phone: $phone
-                        Account Status: $status
-                    """.trimIndent()
-
-                    textSize = 16f
-                    setPadding(20, 20, 20, 20)
-                    setBackgroundResource(
-                        android.R.drawable.dialog_holo_light_frame
-                    )
-                }
-
-                val params = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-
-                params.setMargins(0, 0, 0, 16)
-
-                tenantsContainer.addView(tenantCard, params)
-
-            } while (it.moveToNext())
+            tenants.forEach { tenant ->
+                addTenantCard(tenant)
+            }
         }
     }
-            }
+
+    private fun addTenantCard(tenant: UserEntity) {
+
+        val tenantCard = TextView(this).apply {
+
+            text = """
+                Tenant ID: ${tenant.id}
+                Name: ${tenant.fullName}
+                Email: ${tenant.email}
+                Phone: ${tenant.phone}
+                Account Status: ${tenant.approvalStatus}
+            """.trimIndent()
+
+            textSize = 16f
+            setPadding(20, 20, 20, 20)
+
+            setBackgroundResource(
+                android.R.drawable.dialog_holo_light_frame
+            )
+        }
+
+        val params = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        params.setMargins(0, 0, 0, 16)
+
+        tenantsContainer.addView(tenantCard, params)
+    }
+}

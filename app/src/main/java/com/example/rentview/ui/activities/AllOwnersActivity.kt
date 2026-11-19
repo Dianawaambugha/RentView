@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.Button
@@ -11,15 +7,22 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import com.example.rentview.data.UserEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AllOwnersActivity : AppCompatActivity() {
-    private lateinit var databaseHelper: UserDatabaseHelper
+
+    private lateinit var database: RentViewDatabase
     private lateinit var ownersContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        databaseHelper = UserDatabaseHelper.getInstance(this)
+        database = RentViewDatabase.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -45,6 +48,7 @@ class AllOwnersActivity : AppCompatActivity() {
             text = "Back to Dashboard"
             setOnClickListener { finish() }
         }
+
         mainLayout.addView(title)
         mainLayout.addView(
             scrollView,
@@ -62,13 +66,15 @@ class AllOwnersActivity : AppCompatActivity() {
     }
 
     private fun displayOwners() {
-        ownersContainer.removeAllViews()
+        lifecycleScope.launch {
+            val owners = withContext(Dispatchers.IO) {
+                database.userDao().getAllOwners()
+            }
 
-        val cursor = databaseHelper.getAllOwners()
+            ownersContainer.removeAllViews()
 
-        cursor.use {
-            if (!it.moveToFirst()) {
-                val emptyMessage = TextView(this).apply {
+            if (owners.isEmpty()) {
+                val emptyMessage = TextView(this@AllOwnersActivity).apply {
                     text = "No registered property owners found."
                     textSize = 16f
                     gravity = Gravity.CENTER
@@ -76,56 +82,38 @@ class AllOwnersActivity : AppCompatActivity() {
                 }
 
                 ownersContainer.addView(emptyMessage)
-                return
+                return@launch
             }
-            do {
-                val ownerId = it.getLong(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_ID)
-                )
 
-                val name = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_NAME)
-                )
-
-                val email = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_EMAIL)
-                )
-
-                val phone = it.getString(
-                    it.getColumnIndexOrThrow(UserDatabaseHelper.COL_PHONE)
-                )
-
-                val status = it.getString(
-                    it.getColumnIndexOrThrow(
-                        UserDatabaseHelper.COL_APPROVAL_STATUS
-                    )
-                )
-
-                val ownerCard = TextView(this).apply {
-                    text = """
-                        Owner ID: $ownerId
-                        Name: $name
-                        Email: $email
-                        Phone: $phone
-                        Account Status: $status
-                    """.trimIndent()
-
-                    textSize = 16f
-                    setPadding(20, 20, 20, 20)
-                    setBackgroundResource(
-                        android.R.drawable.dialog_holo_light_frame
-                    )
-                }
-                val params = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-
-                params.setMargins(0, 0, 0, 16)
-
-                ownersContainer.addView(ownerCard, params)
-
-            } while (it.moveToNext())
+            owners.forEach { owner ->
+                addOwnerCard(owner)
+            }
         }
     }
+
+    private fun addOwnerCard(owner: UserEntity) {
+        val ownerCard = TextView(this).apply {
+            text = """
+                Owner ID: ${owner.id}
+                Name: ${owner.fullName}
+                Email: ${owner.email}
+                Phone: ${owner.phone}
+                Account Status: ${owner.approvalStatus}
+            """.trimIndent()
+
+            textSize = 16f
+            setPadding(20, 20, 20, 20)
+            setBackgroundResource(
+                android.R.drawable.dialog_holo_light_frame
+            )
         }
+
+        val params = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        params.setMargins(0, 0, 0, 16)
+        ownersContainer.addView(ownerCard, params)
+    }
+}

@@ -1,13 +1,15 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class FinancialOverviewActivity : AppCompatActivity() {
@@ -16,19 +18,23 @@ class FinancialOverviewActivity : AppCompatActivity() {
     private lateinit var tvTotalAdvertisedRent: TextView
     private lateinit var tvAverageAdvertisedRent: TextView
 
-    private lateinit var dbHelper: UserDatabaseHelper
+    private lateinit var database: RentViewDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_financial_overview)
 
-        dbHelper = UserDatabaseHelper(this)
+        database = RentViewDatabase.getInstance(this)
 
-        tvApprovedPropertyCount = findViewById(R.id.tvApprovedPropertyCount)
-        tvTotalAdvertisedRent = findViewById(R.id.tvTotalAdvertisedRent)
-        tvAverageAdvertisedRent = findViewById(R.id.tvAverageAdvertisedRent)
+        tvApprovedPropertyCount =
+            findViewById(R.id.tvApprovedPropertyCount)
 
-        // Back button: close this screen and return to the admin dashboard
+        tvTotalAdvertisedRent =
+            findViewById(R.id.tvTotalAdvertisedRent)
+
+        tvAverageAdvertisedRent =
+            findViewById(R.id.tvAverageAdvertisedRent)
+
         findViewById<Button>(R.id.btnBack).setOnClickListener {
             finish()
         }
@@ -38,36 +44,33 @@ class FinancialOverviewActivity : AppCompatActivity() {
 
     private fun loadFinancialOverview() {
 
-        var propertyCount = 0
-        var totalRent = 0.0
+        lifecycleScope.launch {
 
-        dbHelper.getApprovedProperties().use {
+            val (propertyCount, totalRent) = withContext(Dispatchers.IO) {
 
-            val rentColumn = it.getColumnIndexOrThrow(UserDatabaseHelper.COL_PROPERTY_RENT)
+                val approvedProperties =
+                    database.propertyDao().getApprovedProperties()
 
-            while (it.moveToNext()) {
-                propertyCount++
-                totalRent += it.getDouble(rentColumn)
+                val count = approvedProperties.size
+
+                val total = approvedProperties.sumOf { it.rent }
+
+                Pair(count, total)
             }
+
+            val averageRent = if (propertyCount > 0) {
+                totalRent / propertyCount
+            } else {
+                0.0
+            }
+
+            tvApprovedPropertyCount.text = propertyCount.toString()
+
+            tvTotalAdvertisedRent.text =
+                "KSh ${String.format(Locale.getDefault(), "%,.2f", totalRent)}"
+
+            tvAverageAdvertisedRent.text =
+                "KSh ${String.format(Locale.getDefault(), "%,.2f", averageRent)}"
         }
-
-        val averageRent = if (propertyCount > 0) {
-            totalRent / propertyCount
-        } else {
-            0.0
-        }
-
-        tvApprovedPropertyCount.text = propertyCount.toString()
-
-        tvTotalAdvertisedRent.text =
-            "KSh ${String.format(Locale.getDefault(), "%,.2f", totalRent)}"
-
-        tvAverageAdvertisedRent.text =
-            "KSh ${String.format(Locale.getDefault(), "%,.2f", averageRent)}"
-    }
-
-    override fun onDestroy() {
-        dbHelper.close()
-        super.onDestroy()
     }
 }

@@ -8,7 +8,6 @@ import com.example.rentview.ui.adapters.*
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.data.UserDatabaseHelper
 import com.example.rentview.data.PropertyFilter
 import com.example.rentview.data.PropertyItem
 import com.example.rentview.data.PropertyRepository
@@ -40,7 +39,7 @@ sealed class PropertyListState {
 class PropertyListViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = PropertyRepository(
-        UserDatabaseHelper.getInstance(application)
+        RentViewDatabase.getInstance(application)
     )
 
     private val _state = MutableStateFlow<PropertyListState>(PropertyListState.Loading)

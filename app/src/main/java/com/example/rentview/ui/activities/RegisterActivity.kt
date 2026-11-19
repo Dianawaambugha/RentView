@@ -1,19 +1,28 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
+import android.util.Patterns
+import android.widget.AdapterView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import android.widget.TextView
-import android.content.Intent
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.RentViewDatabase
+import com.example.rentview.data.UserEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 
 class RegisterActivity : AppCompatActivity() {
+
+    private val database by lazy {
+        RentViewDatabase.getInstance(applicationContext)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,27 +33,39 @@ class RegisterActivity : AppCompatActivity() {
         val phone = findViewById<EditText>(R.id.etPhone)
         val password = findViewById<EditText>(R.id.etPassword)
         val role = findViewById<Spinner>(R.id.spinnerRole)
+
         role.setSelection(0)
-        role.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
 
-            override fun onItemSelected(
-                parent: android.widget.AdapterView<*>?,
-                view: android.view.View?,
-                position: Int,
-                id: Long
-            ) {
-                val selectedRole = parent?.getItemAtPosition(position).toString()
-                android.util.Log.d("RentView", "Selected role: $selectedRole")
+        role.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    val selectedRole =
+                        parent?.getItemAtPosition(position).toString()
+
+                    android.util.Log.d(
+                        "RentView",
+                        "Selected role: $selectedRole"
+                    )
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) {
+                }
             }
 
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {
-            }
-        })
         val registerButton = findViewById<Button>(R.id.btnRegister)
         val loginLink = findViewById<TextView>(R.id.tvGoToLogin)
 
         loginLink.setOnClickListener {
-            val intent = Intent(this, LoginActivity::class.java)
+            val intent = android.content.Intent(
+                this,
+                LoginActivity::class.java
+            )
             startActivity(intent)
         }
 
@@ -57,79 +78,124 @@ class RegisterActivity : AppCompatActivity() {
             val roleValue = role.selectedItem.toString()
 
             when {
-                nameValue.isEmpty() ->
+                nameValue.isEmpty() -> {
                     fullName.error = "Enter your full name"
+                }
 
-                emailValue.isEmpty() ->
+                emailValue.isEmpty() -> {
                     email.error = "Enter your email"
+                }
 
-                !android.util.Patterns.EMAIL_ADDRESS
-                    .matcher(emailValue).matches() ->
+                !Patterns.EMAIL_ADDRESS.matcher(emailValue).matches() -> {
                     email.error = "Enter a valid email address"
+                }
 
-                phoneValue.isEmpty() ->
+                phoneValue.isEmpty() -> {
                     phone.error = "Enter your phone number"
+                }
 
-                passwordValue.length < 8 ->
+                passwordValue.length < 8 -> {
                     password.error = "Password must have at least 8 characters"
+                }
 
-                roleValue == "Select your role" ->
+                roleValue == "Select your role" -> {
                     Toast.makeText(
                         this,
                         "Please select your role",
                         Toast.LENGTH_SHORT
                     ).show()
+                }
 
                 else -> {
-                    val databaseHelper = UserDatabaseHelper(this)
+                    registerButton.isEnabled = false
 
-                    val saved = databaseHelper.registerUser(
-                        name = nameValue,
-                        email = emailValue,
-                        phone = phoneValue,
-                        password = passwordValue,
-                        role = roleValue
-                    )
+                    lifecycleScope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            try {
+                                val existingUser =
+                                    database.userDao().getByEmail(emailValue)
 
-                    if (saved) {
+                                if (existingUser != null) {
+                                    false
+                                } else {
+                                    val passwordHash = hashPassword(passwordValue)
 
-                        // Show a different message depending on the selected role
-                        if (roleValue == UserDatabaseHelper.ROLE_OWNER) {
-                            Toast.makeText(
-                                this,
-                                "Registration successful! Your account is pending administrator approval. You cannot list properties until approved.",
-                                Toast.LENGTH_LONG
-                            ).show()
+                                    val approvalStatus =
+                                        if (roleValue == "Property Owner") {
+                                            "PENDING"
+                                        } else {
+                                            "APPROVED"
+                                        }
+
+                                    val newUser = UserEntity(
+                                        fullName = nameValue,
+                                        email = emailValue,
+                                        phone = phoneValue,
+                                        passwordHash = passwordHash,
+                                        role = roleValue,
+                                        approvalStatus = approvalStatus
+                                    )
+
+                                    database.userDao().insert(newUser)
+                                    true
+                                }
+                            } catch (exception: Exception) {
+                                android.util.Log.e(
+                                    "RentView",
+                                    "Registration failed",
+                                    exception
+                                )
+                                false
+                            }
+                        }
+
+                        registerButton.isEnabled = true
+
+                        if (result) {
+
+                             if (roleValue == "Property Owner") {
+                                Toast.makeText(
+                                    this@RegisterActivity,
+                                    "Registration successful! Your account is pending administrator approval. You cannot list properties until approved.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    this@RegisterActivity,
+                                    "Account created successfully! You can now log in.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+
+                            fullName.text.clear()
+                            email.text.clear()
+                            phone.text.clear()
+                            password.text.clear()
+                            role.setSelection(0)
+
                         } else {
+                            email.error =
+                                "This email may already be registered"
+
                             Toast.makeText(
-                                this,
-                                "Account created successfully! You can now log in.",
+                                this@RegisterActivity,
+                                "Registration failed. This email may already exist.",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
-
-                        // Clear the registration fields
-                        fullName.text.clear()
-                        email.text.clear()
-                        phone.text.clear()
-                        password.text.clear()
-                        role.setSelection(0)
-
-                    } else {
-
-                        email.error = "This email may already be registered"
-
-                        Toast.makeText(
-                            this,
-                            "Registration failed. This email may already exist.",
-                            Toast.LENGTH_LONG
-                        ).show()
                     }
-
-
-                    databaseHelper.close()
                 }
             }
+        }
+    }
+
+    private fun hashPassword(password: String): String {
+        val bytes = MessageDigest
+            .getInstance("SHA-256")
+            .digest(password.toByteArray(Charsets.UTF_8))
+
+        return bytes.joinToString("") {
+            "%02x".format(it)
         }
     }
 }

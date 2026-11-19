@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
@@ -14,12 +10,24 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class MyPropertiesActivity : AppCompatActivity() {
-    private lateinit var databaseHelper: UserDatabaseHelper
+
+    companion object {
+        private const val STATUS_APPROVED = "APPROVED"
+        private const val STATUS_PENDING = "PENDING"
+    }
+
     private var ownerId: Long = -1L
     private lateinit var propertiesContainer: LinearLayout
+    private lateinit var database: RentViewDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,7 +45,7 @@ class MyPropertiesActivity : AppCompatActivity() {
             return
         }
 
-        databaseHelper = UserDatabaseHelper(this)
+        database = RentViewDatabase.getInstance(applicationContext)
 
         val scrollView = ScrollView(this)
 
@@ -46,9 +54,7 @@ class MyPropertiesActivity : AppCompatActivity() {
             setPadding(32, 32, 32, 32)
         }
 
-        // Add the properties container without explicit layout parameters.
         scrollView.addView(propertiesContainer)
-
         setContentView(scrollView)
 
         displayProperties()
@@ -57,162 +63,160 @@ class MyPropertiesActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        if (
-            ::databaseHelper.isInitialized &&
-            ::propertiesContainer.isInitialized
-        ) {
+        if (::propertiesContainer.isInitialized) {
             displayProperties()
         }
     }
 
     private fun displayProperties() {
 
-        propertiesContainer.removeAllViews()
+        lifecycleScope.launch {
 
-        val heading = TextView(this).apply {
-            text = getString(R.string.my_properties_title)
-            textSize = 26f
-            setPadding(0, 0, 0, 24)
-        }
+            propertiesContainer.removeAllViews()
 
-        propertiesContainer.addView(heading)
+            try {
 
-        val cursor = databaseHelper.getOwnerProperties(ownerId)
-        var propertyCount = 0
+                val properties = withContext(Dispatchers.IO) {
 
-        cursor.use { properties ->
+                    val propertyList = database.propertyDao().getByOwner(ownerId)
 
-            while (properties.moveToNext()) {
+                    propertyList.map { property ->
 
-                propertyCount++
+                        val pendingEdit = database.propertyEditRequestDao()
+                            .getByProperty(property.propertyId)
+                            .any { it.editStatus == STATUS_PENDING }
 
-                val propertyId = properties.getLong(0)
-                val title = properties.getString(2)
-                val location = properties.getString(3)
-                val rent = properties.getDouble(4)
-                val bedrooms = properties.getInt(5)
-                val description = properties.getString(6)
-                val status = properties.getString(7)
-
-                val propertyCard = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(20, 20, 20, 20)
-                    elevation = 4f
-                    setBackgroundColor(0xFFF2F2F2.toInt())
+                        property to pendingEdit
+                    }
                 }
 
-                val formattedRent = String.format(
-                    Locale.getDefault(),
-                    "%,.2f",
-                    rent
-                )
-
-                val propertyDetails = TextView(this).apply {
-                    text = getString(
-                        R.string.property_card_details,
-                        title,
-                        location,
-                        formattedRent,
-                        bedrooms,
-                        description,
-                        status
-                    )
-
-                    textSize = 16f
+                val heading = TextView(this@MyPropertiesActivity).apply {
+                    text = getString(R.string.my_properties_title)
+                    textSize = 26f
+                    setPadding(0, 0, 0, 24)
                 }
 
-                propertyCard.addView(
-                    propertyDetails,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
+                propertiesContainer.addView(heading)
 
-                // Only approved properties can be edited.
-                if (status == UserDatabaseHelper.STATUS_APPROVED) {
+                if (properties.isEmpty()) {
 
-                    val editButton = Button(this).apply {
-                        text = getString(R.string.edit_property)
+                    val emptyMessage = TextView(this@MyPropertiesActivity).apply {
+                        text = getString(R.string.my_properties_empty)
+                        textSize = 18f
+                        gravity = Gravity.CENTER
                     }
 
-                    editButton.setOnClickListener {
+                    propertiesContainer.addView(emptyMessage)
 
-                        val pendingEditId =
-                            databaseHelper.getPendingPropertyEditId(propertyId)
+                } else {
 
-                        if (pendingEditId != null) {
+                    properties.forEach { (property, hasPendingEdit) ->
 
-                            Toast.makeText(
-                                this@MyPropertiesActivity,
-                                getString(R.string.property_edit_pending),
-                                Toast.LENGTH_LONG
-                            ).show()
-
-                        } else {
-
-                            val editIntent = Intent(
-                                this@MyPropertiesActivity,
-                                EditPropertyActivity::class.java
-                            )
-
-                            editIntent.putExtra(
-                                "PROPERTY_ID",
-                                propertyId
-                            )
-
-                            editIntent.putExtra(
-                                "OWNER_ID",
-                                ownerId
-                            )
-
-                            startActivity(editIntent)
+                        val propertyCard = LinearLayout(this@MyPropertiesActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(20, 20, 20, 20)
+                            elevation = 4f
+                            setBackgroundColor(0xFFF2F2F2.toInt())
                         }
-                    }
 
-                    propertyCard.addView(editButton)
+                        val formattedRent = String.format(
+                            Locale.getDefault(),
+                            "%,.2f",
+                            property.rent
+                        )
+
+                        val propertyDetails = TextView(this@MyPropertiesActivity).apply {
+                            text = getString(
+                                R.string.property_card_details,
+                                property.title,
+                                property.location,
+                                formattedRent,
+                                property.bedrooms,
+                                property.description,
+                                property.propertyStatus
+                            )
+
+                            textSize = 16f
+                        }
+
+                        propertyCard.addView(
+                            propertyDetails,
+                            LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            )
+                        )
+
+                        if (property.propertyStatus == STATUS_APPROVED) {
+
+                            val editButton = Button(this@MyPropertiesActivity).apply {
+                                text = getString(R.string.edit_property)
+                            }
+
+                            editButton.setOnClickListener {
+
+                                if (hasPendingEdit) {
+
+                                    Toast.makeText(
+                                        this@MyPropertiesActivity,
+                                        getString(R.string.property_edit_pending),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+
+                                } else {
+
+                                    val editIntent = Intent(
+                                        this@MyPropertiesActivity,
+                                        EditPropertyActivity::class.java
+                                    )
+
+                                    editIntent.putExtra(
+                                        "PROPERTY_ID",
+                                        property.propertyId
+                                    )
+
+                                    editIntent.putExtra(
+                                        "OWNER_ID",
+                                        ownerId
+                                    )
+
+                                    startActivity(editIntent)
+                                }
+                            }
+
+                            propertyCard.addView(editButton)
+                        }
+
+                        propertiesContainer.addView(
+                            propertyCard,
+                            LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                bottomMargin = 24
+                            }
+                        )
+                    }
                 }
 
-                propertiesContainer.addView(
-                    propertyCard,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        bottomMargin = 24
+                val backButton = Button(this@MyPropertiesActivity).apply {
+                    text = getString(R.string.back_to_dashboard)
+
+                    setOnClickListener {
+                        finish()
                     }
-                )
+                }
+
+                propertiesContainer.addView(backButton)
+
+            } catch (e: Exception) {
+
+                Toast.makeText(
+                    this@MyPropertiesActivity,
+                    "Unable to load properties: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
-
-        if (propertyCount == 0) {
-
-            val emptyMessage = TextView(this).apply {
-                text = getString(R.string.my_properties_empty)
-                textSize = 18f
-                gravity = Gravity.CENTER
-            }
-
-            propertiesContainer.addView(emptyMessage)
-        }
-
-        val backButton = Button(this).apply {
-            text = getString(R.string.back_to_dashboard)
-
-            setOnClickListener {
-                finish()
-            }
-        }
-
-        propertiesContainer.addView(backButton)
-    }
-
-    override fun onDestroy() {
-
-        if (::databaseHelper.isInitialized) {
-            databaseHelper.close()
-        }
-
-        super.onDestroy()
     }
 }

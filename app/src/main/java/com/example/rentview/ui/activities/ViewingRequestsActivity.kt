@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
@@ -12,15 +8,22 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.data.RentViewDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ViewingRequestsActivity : AppCompatActivity() {
-    private lateinit var databaseHelper: UserDatabaseHelper
+
     private lateinit var requestsContainer: LinearLayout
+
+    private val database by lazy {
+        RentViewDatabase.getInstance(applicationContext)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        databaseHelper = UserDatabaseHelper.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -69,14 +72,109 @@ class ViewingRequestsActivity : AppCompatActivity() {
     }
 
     private fun displayViewingRequests() {
+
         requestsContainer.removeAllViews()
 
-        val cursor = databaseHelper.getAllViewingRequests()
+        lifecycleScope.launch {
 
-        cursor.use {
+            val requests = withContext(Dispatchers.IO) {
 
-            if (it.count == 0) {
-                val emptyMessage = TextView(this).apply {
+                val propertyDao = database.propertyDao()
+                val viewingDao = database.viewingDao()
+                val userDao = database.userDao()
+
+                val allProperties = propertyDao.getAll()
+
+                val requestDetails = mutableListOf<String>()
+
+                for (property in allProperties) {
+
+                    val viewings =
+                        viewingDao.getByProperty(property.propertyId)
+
+                    val owner =
+                        userDao.getById(property.ownerId)
+
+                    for (viewing in viewings) {
+
+                        val tenant =
+                            userDao.getById(viewing.tenantId)
+
+                        val propertyTitle =
+                            property.title.ifBlank {
+                                "Unknown Property"
+                            }
+
+                        val propertyLocation =
+                            property.location.ifBlank {
+                                "Location unavailable"
+                            }
+
+                        val ownerName =
+                            owner?.fullName ?: "Unknown Owner"
+
+                        val ownerPhone =
+                            owner?.phone ?: "Not provided"
+
+                        val ownerEmail =
+                            owner?.email ?: "Not provided"
+
+                        val tenantName =
+                            tenant?.fullName ?: "Unknown Tenant"
+
+                        val tenantPhone =
+                            tenant?.phone ?: "Not provided"
+
+                        val tenantEmail =
+                            tenant?.email ?: "Not provided"
+
+                        val viewingDate =
+                            viewing.viewingDate.ifBlank {
+                                "Not specified"
+                            }
+
+                        val viewingSlot =
+                            viewing.viewingSlot.ifBlank {
+                                "Not specified"
+                            }
+
+                        val details = """
+                            PROPERTY INFORMATION
+
+                            Property: $propertyTitle
+                            Location: $propertyLocation
+                            Monthly Rent: KES ${"%,.2f".format(property.rent)}
+
+                            OWNER INFORMATION
+
+                            Owner Name: $ownerName
+                            Owner Phone: $ownerPhone
+                            Owner Email: $ownerEmail
+
+                            TENANT INFORMATION
+
+                            Tenant Name: $tenantName
+                            Tenant Phone: $tenantPhone
+                            Tenant Email: $tenantEmail
+
+                            VIEWING APPOINTMENT
+
+                            Date: $viewingDate
+                            Time Slot: $viewingSlot
+                        """.trimIndent()
+
+                        requestDetails.add(details)
+                    }
+                }
+
+                requestDetails
+            }
+
+            requestsContainer.removeAllViews()
+
+            if (requests.isEmpty()) {
+
+                val emptyMessage = TextView(this@ViewingRequestsActivity).apply {
                     text = "No viewing requests have been made yet."
                     textSize = 16f
                     gravity = Gravity.CENTER
@@ -84,113 +182,24 @@ class ViewingRequestsActivity : AppCompatActivity() {
                 }
 
                 requestsContainer.addView(emptyMessage)
-                return
+                return@launch
             }
 
-            val propertyTitleIndex =
-                it.getColumnIndexOrThrow("property_title")
+            for (request in requests) {
 
-            val propertyLocationIndex =
-                it.getColumnIndexOrThrow("property_location")
+                val requestCard =
+                    LinearLayout(this@ViewingRequestsActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(20, 20, 20, 20)
+                        setBackgroundColor(0xFFF1F1F1.toInt())
+                    }
 
-            val propertyRentIndex =
-                it.getColumnIndexOrThrow("property_rent")
-
-            val ownerNameIndex =
-                it.getColumnIndexOrThrow("owner_name")
-
-            val ownerPhoneIndex =
-                it.getColumnIndexOrThrow("owner_phone")
-
-            val ownerEmailIndex =
-                it.getColumnIndexOrThrow("owner_email")
-
-            val tenantNameIndex =
-                it.getColumnIndexOrThrow("tenant_name")
-
-            val tenantPhoneIndex =
-                it.getColumnIndexOrThrow("tenant_phone")
-
-            val tenantEmailIndex =
-                it.getColumnIndexOrThrow("tenant_email")
-
-            val viewingDateIndex =
-                it.getColumnIndexOrThrow("viewing_date")
-
-            val viewingSlotIndex =
-                it.getColumnIndexOrThrow("viewing_slot")
-
-            while (it.moveToNext()) {
-
-                val propertyTitle =
-                    it.getString(propertyTitleIndex) ?: "Unknown Property"
-
-                val propertyLocation =
-                    it.getString(propertyLocationIndex)
-                        ?: "Location unavailable"
-
-                val propertyRent =
-                    it.getDouble(propertyRentIndex)
-
-                val ownerName =
-                    it.getString(ownerNameIndex) ?: "Unknown Owner"
-
-                val ownerPhone =
-                    it.getString(ownerPhoneIndex) ?: "Not provided"
-
-                val ownerEmail =
-                    it.getString(ownerEmailIndex) ?: "Not provided"
-
-                val tenantName =
-                    it.getString(tenantNameIndex) ?: "Unknown Tenant"
-
-                val tenantPhone =
-                    it.getString(tenantPhoneIndex) ?: "Not provided"
-
-                val tenantEmail =
-                    it.getString(tenantEmailIndex) ?: "Not provided"
-
-                val viewingDate =
-                    it.getString(viewingDateIndex) ?: "Not specified"
-
-                val viewingSlot =
-                    it.getString(viewingSlotIndex) ?: "Not specified"
-
-                val requestCard = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(20, 20, 20, 20)
-                    setBackgroundColor(0xFFF1F1F1.toInt())
-                }
-
-                val details = TextView(this).apply {
-                    text = """
-                    PROPERTY INFORMATION
-                    
-                    Property: $propertyTitle
-                    Location: $propertyLocation
-                    Monthly Rent: KES ${"%,.2f".format(propertyRent)}
-                    
-                    OWNER INFORMATION
-                    
-                    Owner Name: $ownerName
-                    Owner Phone: $ownerPhone
-                    Owner Email: $ownerEmail
-                    
-                    TENANT INFORMATION
-                    
-                    Tenant Name: $tenantName
-                    Tenant Phone: $tenantPhone
-                    Tenant Email: $tenantEmail
-                    
-                    VIEWING APPOINTMENT
-                    
-                    Date: $viewingDate
-                    Time Slot: $viewingSlot
-                """.trimIndent()
-
-                    textSize = 16f
-                    setTextColor(0xFF222222.toInt())
-                }
+                val details =
+                    TextView(this@ViewingRequestsActivity).apply {
+                        text = request
+                        textSize = 16f
+                        setTextColor(0xFF222222.toInt())
+                    }
 
                 requestCard.addView(details)
 
