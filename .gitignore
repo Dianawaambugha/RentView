@@ -13,3 +13,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+*.db
+*.db-shm
+*.db-wal
+*.zip
+/.idea/
+database_recovery_backup/
+migration_test/
+migration_backup/
