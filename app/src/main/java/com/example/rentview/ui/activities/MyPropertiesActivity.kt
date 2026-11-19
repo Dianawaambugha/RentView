@@ -66,6 +66,8 @@ class MyPropertiesActivity : AppCompatActivity() {
             propertiesContainer.removeAllViews()
 
             try {
+
+                supabase.auth.awaitInitialization()
                 val cloudUserId = supabase.auth
                     .currentSessionOrNull()
                     ?.user
