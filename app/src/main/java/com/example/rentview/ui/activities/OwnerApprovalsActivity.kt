@@ -11,10 +11,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class OwnerApprovalsActivity : AppCompatActivity() {
 
@@ -22,32 +23,38 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         private const val STATUS_PENDING = "PENDING"
         private const val STATUS_APPROVED = "APPROVED"
         private const val STATUS_REJECTED = "REJECTED"
+        private const val ROLE_OWNER = "PROPERTY_OWNER"
+    }
+
+    private val supabase by lazy {
+        SupabaseClient.client
     }
 
     private lateinit var ownerList: LinearLayout
-    private lateinit var database: RentViewDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        database = RentViewDatabase.getInstance(applicationContext)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 24, 24, 24)
+            setBackgroundColor(0xFFF5F7FA.toInt())
+        }
 
-        val root = LinearLayout(this)
-        root.orientation = LinearLayout.VERTICAL
-        root.setPadding(24, 24, 24, 24)
-        root.setBackgroundColor(0xFFF5F7FA.toInt())
+        val title = TextView(this).apply {
+            text = "Property Owner Approvals"
+            textSize = 25f
+            setTextColor(0xFF17365D.toInt())
+            setPadding(0, 0, 0, 20)
+        }
 
-        val title = TextView(this)
-        title.text = "Property Owner Approvals"
-        title.textSize = 25f
-        title.setTextColor(0xFF17365D.toInt())
-        title.setPadding(0, 0, 0, 20)
         root.addView(title)
 
         val scrollView = ScrollView(this)
 
-        ownerList = LinearLayout(this)
-        ownerList.orientation = LinearLayout.VERTICAL
+        ownerList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
 
         scrollView.addView(ownerList)
 
@@ -60,22 +67,22 @@ class OwnerApprovalsActivity : AppCompatActivity() {
             )
         )
 
-        val backButton = Button(this)
-        backButton.text = "Back to Dashboard"
-        backButton.setOnClickListener {
-            val intent = Intent(
-                this,
-                AdminDashboardActivity::class.java
-            )
-            startActivity(intent)
-            finish()
+        val backButton = Button(this).apply {
+            text = "Back to Dashboard"
+            setOnClickListener {
+                startActivity(
+                    Intent(
+                        this@OwnerApprovalsActivity,
+                        AdminDashboardActivity::class.java
+                    )
+                )
+                finish()
+            }
         }
 
         root.addView(backButton)
 
         setContentView(root)
-
-        loadPendingOwners()
     }
 
     override fun onResume() {
@@ -87,40 +94,48 @@ class OwnerApprovalsActivity : AppCompatActivity() {
     }
 
     private fun loadPendingOwners() {
-
         ownerList.removeAllViews()
 
         lifecycleScope.launch {
-
             try {
-
-                val pendingOwners = withContext(Dispatchers.IO) {
-                    database.userDao().getPendingOwners()
-                }
+                val pendingOwners = supabase
+                    .from("profiles")
+                    .select {
+                        filter {
+                            eq("role", ROLE_OWNER)
+                            eq("approval_status", STATUS_PENDING)
+                        }
+                    }
+                    .decodeList<JsonObject>()
 
                 if (pendingOwners.isEmpty()) {
-
-                    val emptyMessage = TextView(this@OwnerApprovalsActivity)
-                    emptyMessage.text =
-                        "There are no owners awaiting approval."
-                    emptyMessage.textSize = 17f
-                    emptyMessage.setPadding(0, 20, 0, 20)
-                    ownerList.addView(emptyMessage)
-
+                    ownerList.addView(
+                        TextView(this@OwnerApprovalsActivity).apply {
+                            text = "There are no owners awaiting approval."
+                            textSize = 17f
+                            setPadding(0, 20, 0, 20)
+                        }
+                    )
                     return@launch
                 }
 
                 pendingOwners.forEach { owner ->
-                    addOwnerCard(
-                        owner.id,
-                        owner.fullName,
-                        owner.email,
-                        owner.phone
-                    )
+                    val id = owner["id"]?.jsonPrimitive?.content
+                        ?: return@forEach
+
+                    val name = owner["full_name"]?.jsonPrimitive?.content
+                        ?: "Unknown name"
+
+                    val email = owner["email"]?.jsonPrimitive?.content
+                        ?: "Unavailable"
+
+                    val phone = owner["phone"]?.jsonPrimitive?.content
+                        ?: "Unavailable"
+
+                    addOwnerCard(id, name, email, phone)
                 }
 
             } catch (e: Exception) {
-
                 Toast.makeText(
                     this@OwnerApprovalsActivity,
                     "Unable to load pending owners: ${e.message}",
@@ -131,39 +146,42 @@ class OwnerApprovalsActivity : AppCompatActivity() {
     }
 
     private fun addOwnerCard(
-        ownerId: Long,
+        ownerId: String,
         name: String,
         email: String,
         phone: String
     ) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 18, 18, 18)
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
 
-        val card = LinearLayout(this)
-        card.orientation = LinearLayout.VERTICAL
-        card.setPadding(18, 18, 18, 18)
-        card.setBackgroundColor(0xFFFFFFFF.toInt())
-
-        val details = TextView(this)
-        details.text =
-            "Name: $name\nEmail: $email\nPhone: $phone\nStatus: PENDING"
-        details.textSize = 16f
-        details.setTextColor(0xFF222222.toInt())
-        details.setPadding(0, 0, 0, 12)
+        val details = TextView(this).apply {
+            text = "Name: $name\nEmail: $email\nPhone: $phone\nStatus: PENDING"
+            textSize = 16f
+            setTextColor(0xFF222222.toInt())
+            setPadding(0, 0, 0, 12)
+        }
 
         card.addView(details)
 
-        val buttons = LinearLayout(this)
-        buttons.orientation = LinearLayout.HORIZONTAL
-        buttons.gravity = Gravity.CENTER
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
 
-        val approveButton = Button(this)
-        approveButton.text = "Approve"
+        val approveButton = Button(this).apply {
+            text = "Approve"
+        }
+
+        val rejectButton = Button(this).apply {
+            text = "Reject"
+        }
 
         approveButton.setOnClickListener {
             confirmDecision(ownerId, name, STATUS_APPROVED)
         }
-
-        val rejectButton = Button(this)
-        rejectButton.text = "Reject"
 
         rejectButton.setOnClickListener {
             confirmDecision(ownerId, name, STATUS_REJECTED)
@@ -192,19 +210,18 @@ class OwnerApprovalsActivity : AppCompatActivity() {
         val cardParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-
-        cardParams.setMargins(0, 0, 0, 20)
+        ).apply {
+            bottomMargin = 20
+        }
 
         ownerList.addView(card, cardParams)
     }
 
     private fun confirmDecision(
-        ownerId: Long,
+        ownerId: String,
         ownerName: String,
         status: String
     ) {
-
         val action = if (status == STATUS_APPROVED) {
             "approve"
         } else {
@@ -217,57 +234,28 @@ class OwnerApprovalsActivity : AppCompatActivity() {
             .setPositiveButton("Confirm") { _, _ ->
 
                 lifecycleScope.launch {
-
                     try {
-
-                        val updated = withContext(Dispatchers.IO) {
-
-                            val userDao = database.userDao()
-
-                            val owner = userDao.getById(ownerId)
-                            if (owner == null ||
-                                owner.role != "Property Owner" ||
-                                owner.approvalStatus != STATUS_PENDING
-                            ) {
-                                false
-                            } else {
-
-                                userDao.updateApprovalStatus(
-                                    ownerId,
-                                    status
-                                )
-
-                                userDao.getById(ownerId)?.approvalStatus == status
+                        supabase.from("profiles").update(
+                            {
+                                set("approval_status", status)
+                            }
+                        ) {
+                            filter {
+                                eq("id", ownerId)
+                                eq("role", ROLE_OWNER)
+                                eq("approval_status", STATUS_PENDING)
                             }
                         }
 
-                        if (updated) {
+                        Toast.makeText(
+                            this@OwnerApprovalsActivity,
+                            "$ownerName has been ${if (status == STATUS_APPROVED) "approved" else "rejected"}.",
+                            Toast.LENGTH_LONG
+                        ).show()
 
-                            val message = if (status == STATUS_APPROVED) {
-                                "$ownerName has been approved."
-                            } else {
-                                "$ownerName has been rejected."
-                            }
-
-                            Toast.makeText(
-                                this@OwnerApprovalsActivity,
-                                message,
-                                Toast.LENGTH_LONG
-                            ).show()
-
-                            loadPendingOwners()
-
-                        } else {
-
-                            Toast.makeText(
-                                this@OwnerApprovalsActivity,
-                                "Unable to update the owner's status.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
+                        loadPendingOwners()
 
                     } catch (e: Exception) {
-
                         Toast.makeText(
                             this@OwnerApprovalsActivity,
                             "Approval update failed: ${e.message}",

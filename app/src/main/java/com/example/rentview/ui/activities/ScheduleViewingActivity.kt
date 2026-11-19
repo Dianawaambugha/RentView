@@ -1,8 +1,4 @@
-package com.example.rentview.ui.activities
-
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
+﻿package com.example.rentview.ui.activities
 
 import android.Manifest
 import android.app.DatePickerDialog
@@ -25,21 +21,22 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.rentview.R
 import com.example.rentview.data.ViewingTime
 import com.example.rentview.viewmodel.ScheduleViewingViewModel
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-// Tenant screen: pick a date and a free time slot for a property viewing.
-// Also used to reschedule an existing viewing (when VIEWING_ID is passed).
+// Tenant screen: choose a date and free time slot for a property viewing.
 class ScheduleViewingActivity : AppCompatActivity() {
 
     private val viewModel: ScheduleViewingViewModel by viewModels()
 
-    // Android 13+ needs the user's permission before we can show reminders.
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* Booking continues whether or not it was granted. */ }
+    ) {
+        // Booking continues whether or not permission is granted.
+    }
 
     private var shownSlots: List<String>? = null
 
@@ -47,9 +44,17 @@ class ScheduleViewingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_schedule_viewing)
 
-        val propertyId = intent.getLongExtra("PROPERTY_ID", -1L)
+        // Supabase UUIDs only. No local Room ID fallback.
+        val propertyId =
+            intent.getStringExtra("PROPERTY_ID_STRING")
+                ?: intent.getStringExtra("PROPERTY_ID")
+                ?: ""
+
+        val viewingId =
+            intent.getStringExtra("VIEWING_ID_STRING")
+                ?: intent.getStringExtra("VIEWING_ID")
+
         val userId = intent.getLongExtra("USER_ID", -1L)
-        val viewingId = intent.getLongExtra("VIEWING_ID", 0L)
 
         val heading = findViewById<TextView>(R.id.tvScheduleHeading)
         val progress = findViewById<ProgressBar>(R.id.progressSchedule)
@@ -70,24 +75,43 @@ class ScheduleViewingActivity : AppCompatActivity() {
         )
         slotSpinner.adapter = slotAdapter
 
-        viewModel.start(propertyId, userId, viewingId)
+        if (propertyId.isBlank()) {
+            errorText.text = "Invalid property reference."
+            errorText.visibility = View.VISIBLE
+            formLayout.visibility = View.GONE
+            progress.visibility = View.GONE
+            confirmButton.isEnabled = false
+            return
+        }
 
-        if (viewModel.isRescheduling) {
+        viewModel.start(
+            propertyId = propertyId,
+            tenantId = userId,
+            viewingId = viewingId
+        )
+
+        if (!viewingId.isNullOrBlank()) {
             heading.text = "Reschedule Viewing"
             confirmButton.text = "Save New Time"
         }
 
-        cancelButton.setOnClickListener { finish() }
+        cancelButton.setOnClickListener {
+            finish()
+        }
 
-        dateButton.setOnClickListener { showDatePicker() }
+        dateButton.setOnClickListener {
+            showDatePicker()
+        }
 
         confirmButton.setOnClickListener {
             requestNotificationPermissionIfNeeded()
+
             val chosenSlot = if (slotSpinner.visibility == View.VISIBLE) {
                 slotSpinner.selectedItem as? String
             } else {
                 null
             }
+
             viewModel.submit(chosenSlot)
         }
 
@@ -98,7 +122,6 @@ class ScheduleViewingActivity : AppCompatActivity() {
                     progress.visibility =
                         if (state.isLoading) View.VISIBLE else View.GONE
 
-                    // The screen cannot be used (not logged in, property gone...).
                     if (state.fatalError != null) {
                         errorText.text = state.fatalError
                         errorText.visibility = View.VISIBLE
@@ -107,20 +130,19 @@ class ScheduleViewingActivity : AppCompatActivity() {
                     }
 
                     errorText.visibility = View.GONE
-                    formLayout.visibility = if (state.propertyTitle.isEmpty()) {
-                        View.GONE
-                    } else {
-                        View.VISIBLE
-                    }
+
+                    formLayout.visibility =
+                        if (state.propertyTitle.isEmpty()) View.GONE
+                        else View.VISIBLE
 
                     propertyTitle.text = state.propertyTitle
                     propertyLocation.text = state.propertyLocation
 
-                    dateButton.text = state.selectedDate
-                        ?.let { ViewingTime.displayDate(it) }
-                        ?: "Choose a date"
+                    dateButton.text = state.selectedDate?.let {
+                        ViewingTime.displayDate(it)
+                    } ?: "Choose a date"
 
-                    // Refill the slot spinner only when the free slots changed.
+                    // Only refresh the spinner when the available slots change.
                     if (state.slots != shownSlots) {
                         shownSlots = state.slots
                         slotAdapter.clear()
@@ -139,8 +161,8 @@ class ScheduleViewingActivity : AppCompatActivity() {
                         }
 
                         state.slots.isEmpty() -> {
-                            slotHint.text = "No free time slots on this date. " +
-                                    "Please choose another date."
+                            slotHint.text =
+                                "No free time slots on this date. Please choose another date."
                             slotSpinner.visibility = View.GONE
                         }
 
@@ -154,7 +176,11 @@ class ScheduleViewingActivity : AppCompatActivity() {
                         !state.isLoading && state.slots.isNotEmpty()
 
                     state.message?.let {
-                        Toast.makeText(this@ScheduleViewingActivity, it, Toast.LENGTH_LONG).show()
+                        Toast.makeText(
+                            this@ScheduleViewingActivity,
+                            it,
+                            Toast.LENGTH_LONG
+                        ).show()
                         viewModel.messageShown()
                     }
 
@@ -163,13 +189,12 @@ class ScheduleViewingActivity : AppCompatActivity() {
 
                         Toast.makeText(
                             this@ScheduleViewingActivity,
-                            "Viewing confirmed: ${ViewingTime.displayDate(saved.date)} at ${saved.timeSlot}",
+                            "Viewing confirmed: " +
+                                    "${ViewingTime.displayDate(saved.date)} at ${saved.timeSlot}",
                             Toast.LENGTH_LONG
                         ).show()
 
-                        // After a new booking, show the tenant their viewings.
-                        // After a reschedule we simply go back to that list.
-                        if (!viewModel.isRescheduling) {
+                        if (viewingId.isNullOrBlank()) {
                             val viewingsIntent = Intent(
                                 this@ScheduleViewingActivity,
                                 MyViewingsActivity::class.java
@@ -177,6 +202,7 @@ class ScheduleViewingActivity : AppCompatActivity() {
                             viewingsIntent.putExtra("USER_ID", userId)
                             startActivity(viewingsIntent)
                         }
+
                         finish()
                     }
                 }
@@ -190,26 +216,30 @@ class ScheduleViewingActivity : AppCompatActivity() {
         val picker = DatePickerDialog(
             this,
             { _, year, month, day ->
-                viewModel.onDateSelected(ViewingTime.format(year, month, day))
+                viewModel.onDateSelected(
+                    ViewingTime.format(year, month, day)
+                )
             },
             today.get(Calendar.YEAR),
             today.get(Calendar.MONTH),
             today.get(Calendar.DAY_OF_MONTH)
         )
 
-        // Viewings cannot be booked in the past.
         picker.datePicker.minDate = System.currentTimeMillis() - 1000
         picker.show()
     }
 
     private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.POST_NOTIFICATIONS
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            notificationPermission.launch(
+                Manifest.permission.POST_NOTIFICATIONS
+            )
         }
     }
 }

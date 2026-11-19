@@ -1,76 +1,138 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.SupabaseAuthRepository
+import kotlinx.coroutines.launch
 
 class AdminDashboardActivity : AppCompatActivity() {
+
+    private val authRepository by lazy {
+        SupabaseAuthRepository()
+    }
+
+    private lateinit var dashboardButtons: List<Button>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_admin_dashboard)
 
-        // Approval buttons
-        val ownerButton = findViewById<Button>(R.id.btnOwnerApprovals)
-        val propertyButton = findViewById<Button>(R.id.btnPropertyApprovals)
+        dashboardButtons = listOf(
+            findViewById(R.id.btnOwnerApprovals),
+            findViewById(R.id.btnPropertyApprovals),
+            findViewById(R.id.btnDashboardStatistics),
+            findViewById(R.id.btnAllProperties),
+            findViewById(R.id.btnPropertyEditRequests),
+            findViewById(R.id.btnAllViewings),
+            findViewById(R.id.btnAllTenants),
+            findViewById(R.id.btnAllOwners),
+            findViewById(R.id.btnFinancialOverview)
+        )
 
-        // Dashboard buttons
-        val statisticsButton = findViewById<Button>(R.id.btnDashboardStatistics)
-        val allPropertiesButton = findViewById<Button>(R.id.btnAllProperties)
-        val editRequestsButton = findViewById<Button>(R.id.btnPropertyEditRequests)
-        val allViewingsButton = findViewById<Button>(R.id.btnAllViewings)
-        val allTenantsButton = findViewById<Button>(R.id.btnAllTenants)
-        val allOwnersButton = findViewById<Button>(R.id.btnAllOwners)
-        val financialButton = findViewById<Button>(R.id.btnFinancialOverview)
-
-        // Review Property Owners
-        ownerButton.setOnClickListener {
-            startActivity(Intent(this, OwnerApprovalsActivity::class.java))
+        dashboardButtons.forEach {
+            it.isEnabled = false
         }
 
-        // Review Property Listings
-        propertyButton.setOnClickListener {
-            startActivity(Intent(this, PropertyApprovalsActivity::class.java))
+        verifyAdministratorAccess()
+    }
+
+    private fun verifyAdministratorAccess() {
+        lifecycleScope.launch {
+            try {
+                val isAdmin = authRepository.isCurrentUserAdmin()
+
+                if (!isAdmin) {
+                    authRepository.logout()
+
+                    Toast.makeText(
+                        this@AdminDashboardActivity,
+                        "Administrator access denied. Please log in again.",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    returnToMain()
+                    return@launch
+                }
+
+                enableDashboardNavigation()
+
+            } catch (exception: Exception) {
+                Toast.makeText(
+                    this@AdminDashboardActivity,
+                    exception.message ?: "Unable to verify administrator access.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                try {
+                    authRepository.logout()
+                } catch (_: Exception) {
+                    // Continue to the main screen.
+                }
+
+                returnToMain()
+            }
+        }
+    }
+
+    private fun enableDashboardNavigation() {
+
+        findViewById<Button>(R.id.btnOwnerApprovals).setOnClickListener {
+            openScreen(OwnerApprovalsActivity::class.java)
         }
 
-        // Dashboard Statistics
-        statisticsButton.setOnClickListener {
-            startActivity(Intent(this, DashboardStatisticsActivity::class.java))
+        findViewById<Button>(R.id.btnPropertyApprovals).setOnClickListener {
+            openScreen(PropertyApprovalsActivity::class.java)
         }
 
-        // All Properties
-        allPropertiesButton.setOnClickListener {
-            startActivity(Intent(this, AllPropertiesActivity::class.java))
+        findViewById<Button>(R.id.btnDashboardStatistics).setOnClickListener {
+            openScreen(DashboardStatisticsActivity::class.java)
         }
 
-        // Property Edit Requests
-        editRequestsButton.setOnClickListener {
-            startActivity(Intent(this, PropertyEditRequestsActivity::class.java))
+        findViewById<Button>(R.id.btnAllProperties).setOnClickListener {
+            openScreen(AllPropertiesActivity::class.java)
         }
 
-        // Scheduled Viewings
-        allViewingsButton.setOnClickListener {
-            startActivity(Intent(this, ViewingRequestsActivity::class.java))
+        findViewById<Button>(R.id.btnPropertyEditRequests).setOnClickListener {
+            openScreen(PropertyEditRequestsActivity::class.java)
         }
 
-        // All Tenants
-        allTenantsButton.setOnClickListener {
-            startActivity(Intent(this, AllTenantsActivity::class.java))
+        findViewById<Button>(R.id.btnAllViewings).setOnClickListener {
+            openScreen(ViewingRequestsActivity::class.java)
         }
 
-        // All Property Owners
-        allOwnersButton.setOnClickListener {
-            startActivity(Intent(this, AllOwnersActivity::class.java))
+        findViewById<Button>(R.id.btnAllTenants).setOnClickListener {
+            openScreen(AllTenantsActivity::class.java)
         }
 
-        // Financial Overview
-        financialButton.setOnClickListener {
-            startActivity(Intent(this, FinancialOverviewActivity::class.java))
+        findViewById<Button>(R.id.btnAllOwners).setOnClickListener {
+            openScreen(AllOwnersActivity::class.java)
         }
+
+        findViewById<Button>(R.id.btnFinancialOverview).setOnClickListener {
+            openScreen(FinancialOverviewActivity::class.java)
+        }
+
+        dashboardButtons.forEach {
+            it.isEnabled = true
+        }
+    }
+
+    private fun openScreen(activity: Class<*>) {
+        startActivity(Intent(this, activity))
+    }
+
+    private fun returnToMain() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        startActivity(intent)
+        finish()
     }
 }

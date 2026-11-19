@@ -1,10 +1,5 @@
 package com.example.rentview.ui
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.activities.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,18 +8,16 @@ import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
 import android.widget.ImageView
+import java.io.ByteArrayInputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 
-// Loads a property photo (a content:// URI chosen by the owner) into an ImageView.
-// The photo is decoded on a background thread and shrunk to roughly the size
-// it will be shown at, so large camera photos do not run the phone out of memory.
 object ImageLoader {
 
     private val executor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // Remembers recent photos so scrolling back up is instant.
-    // The cache budget is 1/8 of the app's memory, measured in kilobytes.
     private val cache = object : LruCache<String, Bitmap>(
         (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
     ) {
@@ -33,17 +26,15 @@ object ImageLoader {
         }
     }
 
-    // targetPx = about how many pixels wide or tall the photo will be shown.
     fun load(imageView: ImageView, uriString: String?, targetPx: Int) {
 
-        // RecyclerView reuses views. The tag lets a slow load know the view has
-        // since been given a different photo, so it must not overwrite it.
         imageView.tag = uriString
         imageView.setImageDrawable(null)
 
         if (uriString.isNullOrBlank()) return
 
         val cached = cache.get(uriString)
+
         if (cached != null) {
             imageView.setImageBitmap(cached)
             return
@@ -52,7 +43,20 @@ object ImageLoader {
         val appContext = imageView.context.applicationContext
 
         executor.execute {
-            val bitmap = decode(appContext, uriString, targetPx)
+
+            val bitmap = try {
+                if (uriString.startsWith("https://") ||
+                    uriString.startsWith("http://")
+                ) {
+                    decodeRemote(uriString, targetPx)
+                } else {
+                    decodeLocal(appContext, uriString, targetPx)
+                }
+            } catch (_: Exception) {
+                null
+            } catch (_: OutOfMemoryError) {
+                null
+            }
 
             if (bitmap != null) {
                 cache.put(uriString, bitmap)
@@ -66,39 +70,111 @@ object ImageLoader {
         }
     }
 
-    // Returns null if the photo cannot be opened (deleted, permission lost, etc.).
-    private fun decode(context: Context, uriString: String, targetPx: Int): Bitmap? {
+    private fun decodeRemote(
+        imageUrl: String,
+        targetPx: Int
+    ): Bitmap? {
+
+        val connection = URL(imageUrl).openConnection()
+                as HttpURLConnection
+
         return try {
-            val uri = Uri.parse(uriString)
-            val resolver = context.contentResolver
 
-            // First pass: read only the photo's size.
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            resolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, bounds)
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 15000
+            connection.readTimeout = 20000
+            connection.doInput = true
+            connection.connect()
+
+            if (connection.responseCode !in 200..299) {
+                return null
             }
 
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-                null
-            } else {
-                // Halve the photo while it is still at least target size.
-                var sample = 1
-                while (bounds.outWidth / (sample * 2) >= targetPx &&
-                    bounds.outHeight / (sample * 2) >= targetPx
-                ) {
-                    sample *= 2
-                }
-
-                // Second pass: decode the shrunk photo.
-                val options = BitmapFactory.Options().apply { inSampleSize = sample }
-                resolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it, null, options)
-                }
+            val imageBytes = connection.inputStream.use {
+                it.readBytes()
             }
-        } catch (e: Exception) {
-            null
-        } catch (e: OutOfMemoryError) {
-            null
+
+            decodeBytes(imageBytes, targetPx)
+
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun decodeBytes(
+        imageBytes: ByteArray,
+        targetPx: Int
+    ): Bitmap? {
+
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+
+        ByteArrayInputStream(imageBytes).use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        }
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null
+        }
+
+        var sample = 1
+
+        while (
+            bounds.outWidth / (sample * 2) >= targetPx &&
+            bounds.outHeight / (sample * 2) >= targetPx
+        ) {
+            sample *= 2
+        }
+
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+        }
+
+        return BitmapFactory.decodeByteArray(
+            imageBytes,
+            0,
+            imageBytes.size,
+            options
+        )
+    }
+
+    private fun decodeLocal(
+        context: Context,
+        uriString: String,
+        targetPx: Int
+    ): Bitmap? {
+
+        val uri = Uri.parse(uriString)
+        val resolver = context.contentResolver
+
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+
+        resolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        }
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null
+        }
+
+        var sample = 1
+
+        while (
+            bounds.outWidth / (sample * 2) >= targetPx &&
+            bounds.outHeight / (sample * 2) >= targetPx
+        ) {
+            sample *= 2
+        }
+
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+        }
+
+        return resolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, options)
         }
     }
 }

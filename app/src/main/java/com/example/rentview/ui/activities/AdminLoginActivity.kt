@@ -1,17 +1,19 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.rentview.R
+import com.example.rentview.data.SupabaseAuthRepository
+import kotlinx.coroutines.launch
 
 class AdminLoginActivity : AppCompatActivity() {
+
+    private val authRepository = SupabaseAuthRepository()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,34 +38,85 @@ class AdminLoginActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val adminEmail = "admin@rentview.com"
-            val adminPassword = "Admin@123"
+            loginButton.isEnabled = false
 
-            if (
-                emailValue.equals(adminEmail, ignoreCase = true) &&
-                passwordValue == adminPassword
-            ) {
-                Toast.makeText(
-                    this,
-                    "Administrator login successful",
-                    Toast.LENGTH_SHORT
-                ).show()
+            lifecycleScope.launch {
 
-                val intent = Intent(
-                    this,
-                    AdminDashboardActivity::class.java
-                )
+                try {
 
-                startActivity(intent)
+                    val user = authRepository.login(
+                        emailValue,
+                        passwordValue
+                    )
 
-            } else {
-                Toast.makeText(
-                    this,
-                    "Invalid administrator email or password",
-                    Toast.LENGTH_LONG
-                ).show()
+                    if (!user.role.equals("ADMIN", ignoreCase = true)) {
+
+                        authRepository.logout()
+
+                        Toast.makeText(
+                            this@AdminLoginActivity,
+                            "Invalid administrator email or password",
+                            Toast.LENGTH_LONG
+                        ).show()
+
+                        return@launch
+                    }
+
+                    if (!user.approvalStatus.equals(
+                            "APPROVED",
+                            ignoreCase = true
+                        )
+                    ) {
+
+                        authRepository.logout()
+
+                        Toast.makeText(
+                            this@AdminLoginActivity,
+                            "Administrator account is not approved.",
+                            Toast.LENGTH_LONG
+                        ).show()
+
+                        return@launch
+                    }
+
+                    Toast.makeText(
+                        this@AdminLoginActivity,
+                        "Administrator login successful",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    val intent = Intent(
+                        this@AdminLoginActivity,
+                        AdminDashboardActivity::class.java
+                    )
+
+                    intent.putExtra("USER_ID", user.id)
+                    intent.putExtra("USER_NAME", user.fullName)
+                    intent.putExtra("USER_ROLE", user.role)
+                    intent.putExtra(
+                        "APPROVAL_STATUS",
+                        user.approvalStatus
+                    )
+                    intent.putExtra(
+                        "SUPABASE_USER_ID",
+                        user.supabaseUserId
+                    )
+
+                    startActivity(intent)
+                    finish()
+
+                } catch (e: Exception) {
+
+                    Toast.makeText(
+                        this@AdminLoginActivity,
+                        "Login failed: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                } finally {
+                    loginButton.isEnabled = true
+                }
             }
         }
     }
-
 }

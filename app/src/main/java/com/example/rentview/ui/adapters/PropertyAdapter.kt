@@ -1,6 +1,5 @@
 package com.example.rentview.ui.adapters
 
-
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,13 +12,15 @@ import com.example.rentview.R
 import com.example.rentview.data.PropertyItem
 import com.example.rentview.ui.Formatters
 import com.example.rentview.ui.ImageLoader
-// Shows the list of approved properties. RecyclerView only creates enough
-// card views to fill the screen and reuses them while the user scrolls.
+
+// Displays approved properties retrieved from Supabase.
 class PropertyAdapter(
     private val onPropertyClicked: (PropertyItem) -> Unit
 ) : ListAdapter<PropertyItem, PropertyAdapter.PropertyViewHolder>(DIFF) {
 
-    class PropertyViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    class PropertyViewHolder(view: View) :
+        RecyclerView.ViewHolder(view) {
+
         val photo: ImageView = view.findViewById(R.id.ivPropertyPhoto)
         val title: TextView = view.findViewById(R.id.tvPropertyTitle)
         val location: TextView = view.findViewById(R.id.tvPropertyLocation)
@@ -27,13 +28,21 @@ class PropertyAdapter(
         val rent: TextView = view.findViewById(R.id.tvPropertyRent)
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PropertyViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int
+    ): PropertyViewHolder {
+
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_property, parent, false)
+
         return PropertyViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: PropertyViewHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: PropertyViewHolder,
+        position: Int
+    ) {
         val property = getItem(position)
 
         holder.title.text = property.title
@@ -41,9 +50,9 @@ class PropertyAdapter(
         holder.bedrooms.text = Formatters.bedrooms(property.bedrooms)
         holder.rent.text = Formatters.rent(property.rent)
 
-        // Show the first photo as the card's picture, if the owner uploaded any.
         val firstPhoto = property.photoUris.firstOrNull()
-        if (firstPhoto == null) {
+
+        if (firstPhoto.isNullOrBlank()) {
             holder.photo.visibility = View.GONE
             holder.photo.tag = null
         } else {
@@ -51,16 +60,35 @@ class PropertyAdapter(
             ImageLoader.load(holder.photo, firstPhoto, 600)
         }
 
-        holder.itemView.setOnClickListener { onPropertyClicked(property) }
+        holder.itemView.setOnClickListener {
+            onPropertyClicked(property)
+        }
     }
 
     companion object {
         private val DIFF = object : DiffUtil.ItemCallback<PropertyItem>() {
-            override fun areItemsTheSame(old: PropertyItem, new: PropertyItem) =
-                old.id == new.id
 
-            override fun areContentsTheSame(old: PropertyItem, new: PropertyItem) =
-                old == new
+            override fun areItemsTheSame(
+                old: PropertyItem,
+                new: PropertyItem
+            ): Boolean {
+                // Cloud UUIDs identify properties across devices.
+                if (!old.supabaseId.isNullOrBlank() &&
+                    !new.supabaseId.isNullOrBlank()
+                ) {
+                    return old.supabaseId == new.supabaseId
+                }
+
+                // Temporary compatibility for local Room properties.
+                return old.id == new.id
+            }
+
+            override fun areContentsTheSame(
+                old: PropertyItem,
+                new: PropertyItem
+            ): Boolean {
+                return old == new
+            }
         }
     }
 }

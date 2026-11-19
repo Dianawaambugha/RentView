@@ -1,209 +1,242 @@
-package com.example.rentview.ui.activities
+﻿package com.example.rentview.ui.activities
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
-import com.example.rentview.data.PropertyEntity
-import com.example.rentview.data.PropertyPhotoEntity
-import com.example.rentview.data.RentViewDatabase
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import java.util.UUID
 
 class AddPropertyActivity : AppCompatActivity() {
 
     private val selectedPhotos = mutableListOf<Uri>()
-    private lateinit var database: RentViewDatabase
 
-    private val photoPicker = registerForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        selectedPhotos.clear()
-
-        for (uri in uris) {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: SecurityException) {
-                continue
-            }
-
-            selectedPhotos.add(uri)
-        }
-
-        val photoText = findViewById<TextView>(R.id.tvSelectedPhotos)
-        photoText.text = if (selectedPhotos.isEmpty()) {
-            "No photos selected"
-        } else {
-            "${selectedPhotos.size} photo(s) selected"
-        }
+    private val supabase by lazy {
+        SupabaseClient.client
     }
+
+    private val photoPicker =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+
+            if (uris.isNotEmpty()) {
+                selectedPhotos.clear()
+
+                uris.forEach { uri ->
+                    try {
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (_: Exception) {
+                        // Permission may already be available.
+                    }
+
+                    selectedPhotos.add(uri)
+                }
+
+                findViewById<TextView>(R.id.tvSelectedPhotos).text =
+                    "${selectedPhotos.size} photo(s) selected"
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContentView(R.layout.activity_add_property)
 
-        val root = findViewById<View>(android.R.id.content)
+        val etTitle = findViewById<EditText>(R.id.etPropertyTitle)
+        val etLocation = findViewById<EditText>(R.id.etPropertyLocation)
+        val etRent = findViewById<EditText>(R.id.etPropertyRent)
+        val etBedrooms = findViewById<EditText>(R.id.etPropertyBedrooms)
+        val etDescription = findViewById<EditText>(R.id.etPropertyDescription)
 
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
+        val btnChoosePhotos = findViewById<Button>(R.id.btnChoosePhotos)
+        val btnSaveProperty = findViewById<Button>(R.id.btnSaveProperty)
+        val btnCancelProperty = findViewById<Button>(R.id.btnCancelProperty)
 
-            view.setPadding(
-                bars.left,
-                bars.top,
-                bars.right,
-                maxOf(bars.bottom, keyboard.bottom)
-            )
-
-            insets
-        }
-
-        database = RentViewDatabase.getInstance(this)
-
-        val ownerId = intent.getLongExtra("USER_ID", -1L)
-
-        val title = findViewById<EditText>(R.id.etPropertyTitle)
-        val location = findViewById<EditText>(R.id.etPropertyLocation)
-        val rent = findViewById<EditText>(R.id.etPropertyRent)
-        val bedrooms = findViewById<EditText>(R.id.etPropertyBedrooms)
-        val description = findViewById<EditText>(R.id.etPropertyDescription)
-        val choosePhotosButton = findViewById<Button>(R.id.btnChoosePhotos)
-        val saveButton = findViewById<Button>(R.id.btnSaveProperty)
-        val cancelButton = findViewById<Button>(R.id.btnCancelProperty)
-
-        choosePhotosButton.setOnClickListener {
+        btnChoosePhotos.setOnClickListener {
             photoPicker.launch(arrayOf("image/*"))
         }
 
-        cancelButton.setOnClickListener {
+        btnCancelProperty.setOnClickListener {
             finish()
         }
 
-        saveButton.setOnClickListener {
-            val titleValue = title.text.toString().trim()
-            val locationValue = location.text.toString().trim()
-            val rentValue = rent.text.toString().trim().toDoubleOrNull()
-            val bedroomsValue = bedrooms.text.toString().trim().toIntOrNull()
-            val descriptionValue = description.text.toString().trim()
+        btnSaveProperty.setOnClickListener {
 
-            when {
-                ownerId == -1L -> {
-                    Toast.makeText(
-                        this,
-                        "Could not identify your account. Please log in again.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+            val title = etTitle.text.toString().trim()
+            val location = etLocation.text.toString().trim()
+            val rent = etRent.text.toString().trim().toDoubleOrNull()
+            val bedrooms = etBedrooms.text.toString().trim().toIntOrNull()
+            val description = etDescription.text.toString().trim()
 
-                titleValue.isEmpty() -> title.error = "Enter the property title"
+            if (
+                title.isEmpty() ||
+                location.isEmpty() ||
+                rent == null ||
+                rent <= 0 ||
+                bedrooms == null ||
+                bedrooms < 0 ||
+                description.isEmpty()
+            ) {
+                Toast.makeText(
+                    this,
+                    "Please enter valid property details.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
 
-                locationValue.isEmpty() -> location.error = "Enter the location"
+            if (selectedPhotos.isEmpty()) {
+                Toast.makeText(
+                    this,
+                    "Please select at least one property photo.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
 
-                rentValue == null || rentValue <= 0 ->
-                    rent.error = "Enter a valid monthly rent"
+            btnSaveProperty.isEnabled = false
 
-                bedroomsValue == null || bedroomsValue < 0 ->
-                    bedrooms.error = "Enter the number of bedrooms"
+            lifecycleScope.launch {
 
-                descriptionValue.isEmpty() ->
-                    description.error = "Enter a description"
+                try {
 
-                selectedPhotos.isEmpty() -> {
-                    Toast.makeText(
-                        this,
-                        "Please choose at least one photo.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                    // Identify the authenticated Supabase user.
+                    val cloudUserId = supabase.auth.currentSessionOrNull()?.user?.id
+                        ?: throw Exception(
+                            "Please log in again before adding a property."
+                        )
 
-                else -> {
-                    saveButton.isEnabled = false
-
-                    lifecycleScope.launch {
-                        val propertyId = withContext(Dispatchers.IO) {
-                            val owner = database.userDao().getById(ownerId)
-                            if (owner == null ||
-                                owner.role != "Property Owner" ||
-                                owner.approvalStatus != "APPROVED"
-                            ) {
-                                return@withContext -1L
+                    // Read the authoritative owner profile from Supabase.
+                    val profiles = supabase.from("profiles")
+                        .select {
+                            filter {
+                                eq("id", cloudUserId)
                             }
+                        }
+                        .decodeList<JsonObject>()
 
-                            val property = PropertyEntity(
-                                ownerId = ownerId,
-                                title = titleValue,
-                                location = locationValue,
-                                rent = rentValue,
-                                bedrooms = bedroomsValue,
-                                description = descriptionValue,
-                                propertyStatus = "PENDING",
-                                createdAt = currentTimestamp()
-                            )
+                    val profile = profiles.firstOrNull()
+                        ?: throw Exception(
+                            "Your cloud user profile could not be found."
+                        )
 
-                            val newPropertyId =
-                                database.propertyDao().insert(property)
+                    val cloudRole = profile["role"]
+                        ?.jsonPrimitive?.contentOrNull
 
-                            if (newPropertyId > 0) {
-                                val photos = selectedPhotos.map { uri ->
-                                    PropertyPhotoEntity(
-                                        propertyId = newPropertyId,
-                                        photoUri = uri.toString()
-                                    )
-                                }
+                    val cloudApprovalStatus = profile["approval_status"]
+                        ?.jsonPrimitive?.contentOrNull
 
-                                database.propertyPhotoDao().insertAll(photos)
-                            }
+                    if (cloudRole != "PROPERTY_OWNER") {
+                        throw Exception(
+                            "Only property owners can add properties."
+                        )
+                    }
 
-                            newPropertyId
+                    if (cloudApprovalStatus != "APPROVED") {
+                        throw Exception(
+                            "Your owner account is awaiting admin approval."
+                        )
+                    }
+
+                    val cloudPropertyId = UUID.randomUUID().toString()
+                    val createdAt = java.time.Instant.now().toString()
+
+                    // Insert the property into Supabase.
+                    val propertyPayload = buildJsonObject {
+                        put("id", cloudPropertyId)
+                        put("owner_id", cloudUserId)
+                        put("title", title)
+                        put("location", location)
+                        put("rent", rent)
+                        put("bedrooms", bedrooms)
+                        put("description", description)
+                        put("property_status", "PENDING")
+                        put("created_at", createdAt)
+                    }
+
+                    withContext(Dispatchers.IO) {
+                        supabase.from("properties").insert(propertyPayload)
+                    }
+
+                    // Upload selected photos and save their Storage paths.
+                    for (uri in selectedPhotos) {
+
+                        val mimeType = contentResolver.getType(uri)
+                            ?: "image/jpeg"
+
+                        val extension = when (mimeType.lowercase()) {
+                            "image/png" -> "png"
+                            "image/webp" -> "webp"
+                            "image/gif" -> "gif"
+                            else -> "jpg"
                         }
 
-                        saveButton.isEnabled = true
+                        val photoPath =
+                            "$cloudUserId/$cloudPropertyId/${UUID.randomUUID()}.$extension"
 
-                        if (propertyId > 0) {
-                            Toast.makeText(
-                                this@AddPropertyActivity,
-                                "Property submitted. It will appear to tenants once the administrator approves it.",
-                                Toast.LENGTH_LONG
-                            ).show()
+                        val photoBytes = withContext(Dispatchers.IO) {
+                            contentResolver.openInputStream(uri)?.use {
+                                it.readBytes()
+                            }
+                        } ?: throw Exception(
+                            "Could not read one of the selected photos."
+                        )
 
-                            finish()
-                        } else {
-                            Toast.makeText(
-                                this@AddPropertyActivity,
-                                "Could not save the property. Make sure your owner account is approved.",
-                                Toast.LENGTH_LONG
-                            ).show()
+                        withContext(Dispatchers.IO) {
+                            supabase.storage
+                                .from("property-photos")
+                                .upload(photoPath, photoBytes)
+                        }
+
+                        val photoPayload = buildJsonObject {
+                            put("property_id", cloudPropertyId)
+                            put("photo_uri", photoPath)
+                        }
+
+                        withContext(Dispatchers.IO) {
+                            supabase.from("property_photos").insert(photoPayload)
                         }
                     }
+
+                    Toast.makeText(
+                        this@AddPropertyActivity,
+                        "Property submitted successfully. Waiting for admin approval.",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    finish()
+
+                } catch (e: Exception) {
+
+                    Toast.makeText(
+                        this@AddPropertyActivity,
+                        "Property submission failed: ${e.message ?: "Please try again."}",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                } finally {
+                    btnSaveProperty.isEnabled = true
                 }
             }
         }
-    }
-
-    private fun currentTimestamp(): String {
-        val formatter = SimpleDateFormat(
-            "yyyy-MM-dd HH:mm:ss",
-            Locale.US
-        )
-        formatter.timeZone = TimeZone.getTimeZone("UTC")
-        return formatter.format(Date())
     }
 }

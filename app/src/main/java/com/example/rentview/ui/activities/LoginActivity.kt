@@ -10,11 +10,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseAuthRepository
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.security.MessageDigest
 
 class LoginActivity : AppCompatActivity() {
 
@@ -27,6 +24,8 @@ class LoginActivity : AppCompatActivity() {
         private const val STATUS_REJECTED = "REJECTED"
     }
 
+    private val authRepository = SupabaseAuthRepository()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
@@ -37,8 +36,9 @@ class LoginActivity : AppCompatActivity() {
         val registerLink = findViewById<TextView>(R.id.tvGoToRegister)
 
         registerLink.setOnClickListener {
-            val intent = Intent(this, RegisterActivity::class.java)
-            startActivity(intent)
+            startActivity(
+                Intent(this, RegisterActivity::class.java)
+            )
         }
 
         loginButton.setOnClickListener {
@@ -68,78 +68,71 @@ class LoginActivity : AppCompatActivity() {
 
                         try {
 
-                            val user = withContext(Dispatchers.IO) {
+                            val user = authRepository.login(
+                                emailValue,
+                                passwordValue
+                            )
 
-                                val database = RentViewDatabase.getInstance(
-                                    applicationContext
-                                )
+                            when {
 
-                                database.userDao().getByEmail(emailValue.lowercase())
-                            }
+                                user.role == ROLE_OWNER &&
+                                        user.approvalStatus == STATUS_PENDING -> {
 
-                            if (user == null ||
-                                user.passwordHash != hashPassword(passwordValue)
-                            ) {
+                                    authRepository.logout()
 
-                                Toast.makeText(
-                                    this@LoginActivity,
-                                    "Incorrect email or password.",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                    Toast.makeText(
+                                        this@LoginActivity,
+                                        "Your account is awaiting administrator approval.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
 
-                            } else {
+                                user.role == ROLE_OWNER &&
+                                        user.approvalStatus == STATUS_REJECTED -> {
 
-                                when {
+                                    authRepository.logout()
 
-                                    user.role == ROLE_OWNER &&
-                                            user.approvalStatus == STATUS_PENDING -> {
+                                    Toast.makeText(
+                                        this@LoginActivity,
+                                        "Your owner account was not approved. Please contact the administrator.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
 
-                                        Toast.makeText(
-                                            this@LoginActivity,
-                                            "Your account is awaiting administrator approval.",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    }
+                                user.role == ROLE_TENANT ||
+                                        (user.role == ROLE_OWNER &&
+                                                user.approvalStatus == STATUS_APPROVED) -> {
 
-                                    user.role == ROLE_OWNER &&
-                                            user.approvalStatus == STATUS_REJECTED -> {
+                                    val homeIntent = Intent(
+                                        this@LoginActivity,
+                                        HomeActivity::class.java
+                                    )
 
-                                        Toast.makeText(
-                                            this@LoginActivity,
-                                            "Your owner account was not approved. Please contact the administrator.",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    }
+                                    homeIntent.putExtra("USER_ID", user.id)
+                                    homeIntent.putExtra("USER_NAME", user.fullName)
+                                    homeIntent.putExtra("USER_ROLE", user.role)
+                                    homeIntent.putExtra(
+                                        "APPROVAL_STATUS",
+                                        user.approvalStatus
+                                    )
+                                    homeIntent.putExtra(
+                                        "SUPABASE_USER_ID",
+                                        user.supabaseUserId
+                                    )
 
-                                    user.role == ROLE_TENANT ||
-                                            (user.role == ROLE_OWNER &&
-                                                    user.approvalStatus == STATUS_APPROVED) -> {
+                                    startActivity(homeIntent)
+                                    finish()
+                                }
 
-                                        val homeIntent = Intent(
-                                            this@LoginActivity,
-                                            HomeActivity::class.java
-                                        )
+                                else -> {
 
-                                        homeIntent.putExtra("USER_ID", user.id)
-                                        homeIntent.putExtra("USER_NAME", user.fullName)
-                                        homeIntent.putExtra("USER_ROLE", user.role)
-                                        homeIntent.putExtra(
-                                            "APPROVAL_STATUS",
-                                            user.approvalStatus
-                                        )
+                                    authRepository.logout()
 
-                                        startActivity(homeIntent)
-                                        finish()
-                                    }
-
-                                    else -> {
-
-                                        Toast.makeText(
-                                            this@LoginActivity,
-                                            "Your account status is invalid. Please contact the administrator.",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    }
+                                    Toast.makeText(
+                                        this@LoginActivity,
+                                        "Your account status is invalid. Please contact the administrator.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
                             }
 
@@ -158,17 +151,6 @@ class LoginActivity : AppCompatActivity() {
                     }
                 }
             }
-        }
-    }
-
-    private fun hashPassword(password: String): String {
-
-        val bytes = MessageDigest
-            .getInstance("SHA-256")
-            .digest(password.toByteArray())
-
-        return bytes.joinToString("") {
-            "%02x".format(it)
         }
     }
 }
