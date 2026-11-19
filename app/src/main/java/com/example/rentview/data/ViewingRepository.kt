@@ -1,47 +1,89 @@
 package com.example.rentview.data
 
-import android.database.Cursor
-import com.example.rentview.UserDatabaseHelper
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import java.util.UUID
 
-// Repository for viewings. All the booking rules live here.
+// All viewing operations use Supabase as the source of truth.
 class ViewingRepository(
-    private val database: UserDatabaseHelper,
     private val properties: PropertyRepository
 ) {
 
-    // Get available slots for a property on a date.
-// Exclude a viewing when rescheduling.
+    private val client
+        get() = SupabaseClient.client
+
+    private fun currentCloudUserId(): String? {
+        return client.auth.currentSessionOrNull()?.user?.id
+    }
+
+    private fun JsonObject.text(key: String): String {
+        return this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
+    }
+
+    private fun JsonObject.number(key: String): Double {
+        return this[key]?.jsonPrimitive?.doubleOrNull ?: 0.0
+    }
+
+    private fun JsonObject.integer(key: String): Int {
+        return this[key]?.jsonPrimitive?.intOrNull ?: 0
+    }
+
+    // Get available viewing slots for a Supabase property UUID.
     suspend fun getAvailableSlots(
-        propertyId: Long,
+        propertyId: String,
         date: String,
-        excludeViewingId: Long = 0L
+        excludeViewingId: String? = null
     ): List<String> = withContext(Dispatchers.IO) {
 
-        val booked = mutableSetOf<String>()
-
-        database.getBookedSlots(propertyId, date, excludeViewingId).use { cursor ->
-            while (cursor.moveToNext()) {
-                booked.add(cursor.getString(0))
+        val bookedViewings = client
+            .from("viewings")
+            .select {
+                filter {
+                    eq("property_id", propertyId)
+                    eq("viewing_date", date)
+                    eq("status", "BOOKED")
+                }
             }
-        }
+            .decodeList<JsonObject>()
+
+        val bookedSlots = bookedViewings
+            .filter { it.text("id") != excludeViewingId }
+            .map { it.text("viewing_slot") }
+            .toSet()
 
         val now = System.currentTimeMillis()
 
         ViewingTime.ALL_SLOTS.filter { slot ->
             val slotTime = ViewingTime.toMillis(date, slot)
-            slot !in booked && slotTime != null && slotTime > now
+
+            slot !in bookedSlots &&
+                    slotTime != null &&
+                    slotTime > now
         }
     }
 
-    // CREATE: Book a property viewing.
+    // Book a viewing in Supabase.
+    // The authenticated Supabase user is always the tenant.
     suspend fun book(
-        propertyId: Long,
+        propertyId: String,
         tenantId: Long,
         date: String,
         slot: String
     ): BookingResult = withContext(Dispatchers.IO) {
+
+        val cloudTenantId = currentCloudUserId()
+            ?: return@withContext BookingResult.Failure(
+                "Please log in again before booking a viewing."
+            )
 
         val slotTime = ViewingTime.toMillis(date, slot)
             ?: return@withContext BookingResult.Failure("Invalid date or time.")
@@ -50,48 +92,79 @@ class ViewingRepository(
             return@withContext BookingResult.InPast
         }
 
-        val property = properties.getProperty(propertyId)
+        val property = try {
+            properties.getProperty(propertyId)
+        } catch (e: Exception) {
+            null
+        }
 
         if (property == null || !property.isApproved) {
             return@withContext BookingResult.PropertyUnavailable
         }
 
-        if (isSlotBooked(propertyId, date, slot, 0L)) {
-            return@withContext BookingResult.SlotTaken
-        }
+        try {
+            val cloudViewingId = UUID.randomUUID().toString()
 
-        if (database.tenantHasViewingAt(tenantId, date, slot, 0L)) {
-            return@withContext BookingResult.TenantBusy
-        }
+            val viewingData = buildJsonObject {
+                put("id", cloudViewingId)
+                put("property_id", propertyId)
+                put("tenant_id", cloudTenantId)
+                put("viewing_date", date)
+                put("viewing_slot", slot)
+                put("status", "BOOKED")
+            }
 
-        val viewingId = database.insertViewing(
-            propertyId,
-            tenantId,
-            date,
-            slot
-        )
+            client.from("viewings").insert(viewingData)
 
-        if (viewingId == -1L) {
-            BookingResult.SlotTaken
-        } else {
             BookingResult.Success(
-                viewingId,
-                property.title,
-                date,
-                slot
+                viewingId = -1L,
+                propertyTitle = property.title,
+                date = date,
+                timeSlot = slot,
+                supabaseViewingId = cloudViewingId
             )
+
+        } catch (e: Exception) {
+            val message = e.message.orEmpty()
+
+            when {
+                message.contains("property", ignoreCase = true) &&
+                        message.contains("slot", ignoreCase = true) -> {
+                    BookingResult.SlotTaken
+                }
+
+                message.contains("tenant", ignoreCase = true) &&
+                        message.contains("slot", ignoreCase = true) -> {
+                    BookingResult.TenantBusy
+                }
+
+                message.contains("23505") -> {
+                    BookingResult.SlotTaken
+                }
+
+                else -> {
+                    BookingResult.Failure(
+                        "Could not book this viewing. Please try again."
+                    )
+                }
+            }
         }
     }
 
-    // UPDATE: Reschedule a viewing.
+    // Reschedule a cloud viewing belonging to the signed-in tenant.
     suspend fun reschedule(
-        viewingId: Long,
+        viewingId: String,
         tenantId: Long,
         date: String,
         slot: String
     ): BookingResult = withContext(Dispatchers.IO) {
 
-        val existing = findViewing(viewingId, tenantId)
+        val cloudTenantId = currentCloudUserId()
+            ?: return@withContext BookingResult.Failure(
+                "Please log in again."
+            )
+
+        val existing = getCloudViewing(viewingId, cloudTenantId)
             ?: return@withContext BookingResult.Failure(
                 "This viewing no longer exists."
             )
@@ -103,139 +176,167 @@ class ViewingRepository(
             return@withContext BookingResult.InPast
         }
 
-        if (isSlotBooked(existing.propertyId, date, slot, viewingId)) {
-            return@withContext BookingResult.SlotTaken
-        }
+        try {
+            val updated = client.from("viewings").update(
+                {
+                    set("viewing_date", date)
+                    set("viewing_slot", slot)
+                }
+            ) {
+                select()
+                filter {
+                    eq("id", viewingId)
+                    eq("tenant_id", cloudTenantId)
+                    eq("status", "BOOKED")
+                }
+            }.decodeList<JsonObject>()
 
-        if (database.tenantHasViewingAt(tenantId, date, slot, viewingId)) {
-            return@withContext BookingResult.TenantBusy
-        }
+            if (updated.isEmpty()) {
+                BookingResult.Failure(
+                    "This viewing could not be rescheduled. It may have already changed."
+                )
+            } else {
+                BookingResult.Success(
+                    viewingId = -1L,
+                    propertyTitle = existing.propertyTitle,
+                    date = date,
+                    timeSlot = slot,
+                    supabaseViewingId = viewingId
+                )
+            }
 
-        if (database.updateViewing(viewingId, tenantId, date, slot)) {
-            BookingResult.Success(
-                viewingId,
-                existing.propertyTitle,
-                date,
-                slot
-            )
-        } else {
-            BookingResult.SlotTaken
+        } catch (e: Exception) {
+            val message = e.message.orEmpty()
+
+            if (message.contains("23505") ||
+                message.contains("slot", ignoreCase = true)
+            ) {
+                BookingResult.SlotTaken
+            } else {
+                BookingResult.Failure(
+                    "Could not reschedule this viewing. Please try again."
+                )
+            }
         }
     }
 
-    // DELETE: Cancel a viewing.
+    // Cancel a cloud viewing without deleting its history.
     suspend fun cancel(
-        viewingId: Long,
+        viewingId: String,
         tenantId: Long
     ): Boolean = withContext(Dispatchers.IO) {
-        database.deleteViewing(viewingId, tenantId)
-    }
 
-    // READ: Get a tenant's viewing requests, soonest first.
-    suspend fun getViewings(
-        tenantId: Long
-    ): List<ViewingItem> = withContext(Dispatchers.IO) {
+        val cloudTenantId = currentCloudUserId()
+            ?: return@withContext false
 
-        getTenantViewings(tenantId).use { cursor ->
-            val items = mutableListOf<ViewingItem>()
+        try {
+            val updated = client.from("viewings").update(
+                {
+                    set("status", "CANCELLED")
+                }
+            ) {
+                select()
+                filter {
+                    eq("id", viewingId)
+                    eq("tenant_id", cloudTenantId)
+                    eq("status", "BOOKED")
+                }
+            }.decodeList<JsonObject>()
 
-            while (cursor.moveToNext()) {
-                items.add(toViewing(cursor))
-            }
+            updated.isNotEmpty()
 
-            items.sortedBy {
-                ViewingTime.toMillis(it.date, it.timeSlot)
-                    ?: Long.MAX_VALUE
-            }
+        } catch (e: Exception) {
+            false
         }
     }
 
-    // READ: Get one viewing.
+    // Get all booked viewings belonging to the signed-in tenant.
+    suspend fun getCloudViewings(): List<ViewingItem> =
+        withContext(Dispatchers.IO) {
+
+            val cloudTenantId = currentCloudUserId()
+                ?: return@withContext emptyList()
+
+            val records = client
+                .from("viewings")
+                .select {
+                    filter {
+                        eq("tenant_id", cloudTenantId)
+                        eq("status", "BOOKED")
+                    }
+                }
+                .decodeList<JsonObject>()
+
+            records.mapNotNull { viewing ->
+
+                val cloudPropertyId = viewing.text("property_id")
+
+                val property = try {
+                    properties.getProperty(cloudPropertyId)
+                } catch (e: Exception) {
+                    null
+                } ?: return@mapNotNull null
+
+                ViewingItem(
+                    id = -1L,
+                    propertyId = -1L,
+                    propertyTitle = property.title,
+                    propertyLocation = property.location,
+                    date = viewing.text("viewing_date"),
+                    timeSlot = viewing.text("viewing_slot"),
+                    supabaseId = viewing.text("id"),
+                    supabasePropertyId = cloudPropertyId
+                )
+            }.sortedBy {
+                ViewingTime.toMillis(it.date, it.timeSlot) ?: Long.MAX_VALUE
+            }
+        }
+
+    // Get one cloud viewing belonging to the signed-in tenant.
     suspend fun getViewing(
-        viewingId: Long,
+        viewingId: String,
         tenantId: Long
     ): ViewingItem? = withContext(Dispatchers.IO) {
-        findViewing(viewingId, tenantId)
+
+        val cloudTenantId = currentCloudUserId()
+            ?: return@withContext null
+
+        getCloudViewing(viewingId, cloudTenantId)
     }
 
-    // Find a viewing belonging to a specific tenant.
-    private fun findViewing(
-        viewingId: Long,
-        tenantId: Long
+    private suspend fun getCloudViewing(
+        viewingId: String,
+        cloudTenantId: String
     ): ViewingItem? {
-        return database.getViewingById(viewingId, tenantId).use { cursor ->
-            if (cursor.moveToFirst()) {
-                toViewing(cursor)
-            } else {
-                null
-            }
-        }
-    }
 
-    // Check whether a slot is already booked.
-    private fun isSlotBooked(
-        propertyId: Long,
-        date: String,
-        slot: String,
-        excludeViewingId: Long
-    ): Boolean {
-        return database.getBookedSlots(
-            propertyId,
-            date,
-            excludeViewingId
-        ).use { cursor ->
-
-            var found = false
-
-            while (cursor.moveToNext()) {
-                if (cursor.getString(0) == slot) {
-                    found = true
-                    break
+        val records = client
+            .from("viewings")
+            .select {
+                filter {
+                    eq("id", viewingId)
+                    eq("tenant_id", cloudTenantId)
+                    eq("status", "BOOKED")
                 }
             }
+            .decodeList<JsonObject>()
 
-            found
-        }
-    }
+        val viewing = records.firstOrNull()
+            ?: return null
 
-    // Convert a database row into a ViewingItem.
-    private fun toViewing(cursor: Cursor): ViewingItem {
+        val cloudPropertyId = viewing.text("property_id")
+
+        val property = properties.getProperty(cloudPropertyId)
+            ?: return null
+
         return ViewingItem(
-            id = cursor.getLong(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_VIEWING_ID
-                )
-            ),
-            propertyId = cursor.getLong(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_PROPERTY_ID
-                )
-            ),
-            propertyTitle = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_PROPERTY_TITLE
-                )
-            ),
-            propertyLocation = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_PROPERTY_LOCATION
-                )
-            ),
-            date = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_VIEWING_DATE
-                )
-            ),
-            timeSlot = cursor.getString(
-                cursor.getColumnIndexOrThrow(
-                    UserDatabaseHelper.COL_VIEWING_SLOT
-                )
-            )
+            id = -1L,
+            propertyId = -1L,
+            propertyTitle = property.title,
+            propertyLocation = property.location,
+            date = viewing.text("viewing_date"),
+            timeSlot = viewing.text("viewing_slot"),
+            supabaseId = viewing.text("id"),
+            supabasePropertyId = cloudPropertyId
         )
-    }
-
-    // Access the existing tenant viewing query through the database helper.
-    private fun getTenantViewings(tenantId: Long): Cursor {
-        return database.getTenantViewings(tenantId)
     }
 }

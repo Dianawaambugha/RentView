@@ -3,7 +3,6 @@ package com.example.rentview.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rentview.UserDatabaseHelper
 import com.example.rentview.data.BookingResult
 import com.example.rentview.data.PropertyRepository
 import com.example.rentview.data.ViewingRepository
@@ -17,56 +16,69 @@ data class ScheduleState(
     val isLoading: Boolean = true,
     val propertyTitle: String = "",
     val propertyLocation: String = "",
-    val selectedDate: String? = null,       // yyyy-MM-dd
-    val slots: List<String> = emptyList(),  // free slots for the selected date
-    val currentSlot: String? = null,        // pre-selected slot when rescheduling
-    val message: String? = null,            // one-time message to show the user
+    val selectedDate: String? = null,
+    val slots: List<String> = emptyList(),
+    val currentSlot: String? = null,
+    val message: String? = null,
     val saved: BookingResult.Success? = null,
-    val fatalError: String? = null          // screen cannot be used
+    val fatalError: String? = null
 )
 
-// Handles both booking a new viewing and rescheduling an existing one.
-// If viewingId > 0 the screen is in "reschedule" mode.
-class ScheduleViewingViewModel(application: Application) : AndroidViewModel(application) {
+class ScheduleViewingViewModel(application: Application) :
+    AndroidViewModel(application) {
 
-    private val database = UserDatabaseHelper.getInstance(application)
-    private val propertyRepository = PropertyRepository(database)
-    private val viewingRepository = ViewingRepository(database, propertyRepository)
+    private val propertyRepository = PropertyRepository()
+    private val viewingRepository =
+        ViewingRepository(propertyRepository)
 
     private val _state = MutableStateFlow(ScheduleState())
     val state: StateFlow<ScheduleState> = _state
 
     private var started = false
-    private var propertyId = -1L
-    private var tenantId = -1L
-    private var viewingId = 0L
+
+    private var propertyId: String? = null
+    private var tenantId: Long = -1L
+
+    // Supabase viewing UUID used when rescheduling.
+    private var cloudViewingId: String? = null
 
     val isRescheduling: Boolean
-        get() = viewingId > 0L
+        get() = cloudViewingId != null
 
-    // Called once by the Activity. Safe to call again after a rotation.
-    fun start(propertyId: Long, tenantId: Long, viewingId: Long) {
-        if (started) {
-            return
-        }
+    // Start using a Supabase property UUID.
+    fun start(
+        propertyId: String,
+        tenantId: Long,
+        viewingId: String? = null
+    ) {
+        if (started) return
         started = true
 
         this.propertyId = propertyId
         this.tenantId = tenantId
-        this.viewingId = viewingId
+        this.cloudViewingId = viewingId?.takeIf { it.isNotBlank() }
 
-        if (tenantId <= 0L) {
+        loadScreen()
+    }
+
+    private fun loadScreen() {
+        val id = propertyId
+
+        if (id.isNullOrBlank()) {
             _state.value = ScheduleState(
                 isLoading = false,
-                fatalError = "Please log in again to book a viewing."
+                fatalError = "Invalid property reference."
             )
             return
         }
 
         viewModelScope.launch {
             try {
-                if (viewingId > 0L) {
-                    val existing = viewingRepository.getViewing(viewingId, tenantId)
+                val cloudId = cloudViewingId
+
+                if (cloudId != null) {
+                    val existing =
+                        viewingRepository.getViewing(cloudId, tenantId)
 
                     if (existing == null) {
                         _state.value = ScheduleState(
@@ -76,7 +88,18 @@ class ScheduleViewingViewModel(application: Application) : AndroidViewModel(appl
                         return@launch
                     }
 
-                    this@ScheduleViewingViewModel.propertyId = existing.propertyId
+                    val cloudPropertyId = existing.supabasePropertyId
+
+                    if (cloudPropertyId.isNullOrBlank()) {
+                        _state.value = ScheduleState(
+                            isLoading = false,
+                            fatalError =
+                                "The property linked to this viewing could not be found."
+                        )
+                        return@launch
+                    }
+
+                    propertyId = cloudPropertyId
 
                     _state.value = ScheduleState(
                         isLoading = false,
@@ -85,84 +108,137 @@ class ScheduleViewingViewModel(application: Application) : AndroidViewModel(appl
                         selectedDate = existing.date,
                         currentSlot = existing.timeSlot,
                         slots = viewingRepository.getAvailableSlots(
-                            existing.propertyId, existing.date, viewingId
+                            cloudPropertyId,
+                            existing.date,
+                            cloudId
                         )
                     )
-                } else {
-                    val property = propertyRepository.getProperty(propertyId)
 
-                    _state.value = if (property == null || !property.isApproved) {
-                        ScheduleState(
-                            isLoading = false,
-                            fatalError = "This property is no longer available."
-                        )
-                    } else {
-                        ScheduleState(
-                            isLoading = false,
-                            propertyTitle = property.title,
-                            propertyLocation = property.location
-                        )
-                    }
+                    return@launch
                 }
+
+                val property = propertyRepository.getProperty(id)
+
+                _state.value = if (property == null || !property.isApproved) {
+                    ScheduleState(
+                        isLoading = false,
+                        fatalError = "This property is no longer available."
+                    )
+                } else {
+                    ScheduleState(
+                        isLoading = false,
+                        propertyTitle = property.title,
+                        propertyLocation = property.location
+                    )
+                }
+
             } catch (e: Exception) {
                 _state.value = ScheduleState(
                     isLoading = false,
-                    fatalError = "Something went wrong. Please try again."
+                    fatalError =
+                        "Could not load this viewing. Please try again."
                 )
             }
         }
     }
 
-    // The tenant picked a date: work out which slots are still free.
     fun onDateSelected(date: String) {
         viewModelScope.launch {
             try {
-                val slots = viewingRepository.getAvailableSlots(propertyId, date, viewingId)
+                val id = propertyId ?: return@launch
+
+                val slots = viewingRepository.getAvailableSlots(
+                    id,
+                    date,
+                    cloudViewingId
+                )
+
                 _state.update {
-                    it.copy(selectedDate = date, slots = slots, currentSlot = null)
+                    it.copy(
+                        selectedDate = date,
+                        slots = slots,
+                        currentSlot = null,
+                        message = null
+                    )
                 }
+
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(message = "Could not check availability. Please try again.")
+                    it.copy(
+                        message =
+                            "Could not check availability. Please try again."
+                    )
                 }
             }
         }
     }
 
-    // The tenant pressed Confirm.
     fun submit(slot: String?) {
         val date = _state.value.selectedDate
 
         if (date == null) {
-            _state.update { it.copy(message = "Please choose a viewing date.") }
+            _state.update {
+                it.copy(message = "Please choose a viewing date.")
+            }
             return
         }
 
         if (slot == null) {
-            _state.update { it.copy(message = "Please choose a time slot.") }
+            _state.update {
+                it.copy(message = "Please choose a time slot.")
+            }
             return
         }
 
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            _state.update {
+                it.copy(isLoading = true, message = null)
+            }
 
             try {
-                val result = if (viewingId > 0L) {
-                    viewingRepository.reschedule(viewingId, tenantId, date, slot)
+                val id = propertyId
+                    ?: throw IllegalStateException("Property ID is missing.")
+
+                val result = if (cloudViewingId != null) {
+                    viewingRepository.reschedule(
+                        cloudViewingId!!,
+                        tenantId,
+                        date,
+                        slot
+                    )
                 } else {
-                    viewingRepository.book(propertyId, tenantId, date, slot)
+                    viewingRepository.book(
+                        id,
+                        tenantId,
+                        date,
+                        slot
+                    )
                 }
 
                 when (result) {
+
                     is BookingResult.Success -> {
-                        ViewingReminders.schedule(
-                            getApplication<Application>(),
-                            result.viewingId,
-                            result.propertyTitle,
-                            result.date,
-                            result.timeSlot
-                        )
-                        _state.update { it.copy(isLoading = false, saved = result) }
+                        val context = getApplication<Application>()
+
+                        val cloudId = result.supabaseViewingId
+                            ?: cloudViewingId
+
+                        if (!cloudId.isNullOrBlank()) {
+                            ViewingReminders.schedule(
+                                context,
+                                cloudId,
+                                result.propertyTitle,
+                                result.date,
+                                result.timeSlot
+                            )
+                        }
+
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                saved = result
+                            )
+                        }
                     }
 
                     BookingResult.SlotTaken -> {
@@ -176,7 +252,8 @@ class ScheduleViewingViewModel(application: Application) : AndroidViewModel(appl
                         _state.update {
                             it.copy(
                                 isLoading = false,
-                                message = "You already have a viewing at that time. Choose a different slot."
+                                message =
+                                    "You already have a viewing at that time. Choose a different slot."
                             )
                         }
                     }
@@ -192,40 +269,65 @@ class ScheduleViewingViewModel(application: Application) : AndroidViewModel(appl
                         _state.update {
                             it.copy(
                                 isLoading = false,
-                                message = "This property is no longer available."
+                                message =
+                                    "This property is no longer available."
                             )
                         }
                     }
 
                     is BookingResult.Failure -> {
                         _state.update {
-                            it.copy(isLoading = false, message = result.reason)
+                            it.copy(
+                                isLoading = false,
+                                message = result.reason
+                            )
                         }
                     }
                 }
+
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        message = "Could not save the viewing. Please try again."
+                        message =
+                            "Could not save the viewing. Please try again."
                     )
                 }
             }
         }
     }
 
-    private suspend fun refreshSlotsWithMessage(date: String, message: String) {
-        val slots = viewingRepository.getAvailableSlots(propertyId, date, viewingId)
+    private suspend fun refreshSlotsWithMessage(
+        date: String,
+        message: String
+    ) {
+        val id = propertyId ?: return
+
+        val slots = viewingRepository.getAvailableSlots(
+            id,
+            date,
+            cloudViewingId
+        )
+
         _state.update {
-            it.copy(isLoading = false, slots = slots, currentSlot = null, message = message)
+            it.copy(
+                isLoading = false,
+                slots = slots,
+                currentSlot = null,
+                message = message
+            )
         }
     }
 
     fun messageShown() {
-        _state.update { it.copy(message = null) }
+        _state.update {
+            it.copy(message = null)
+        }
     }
 
     fun savedHandled() {
-        _state.update { it.copy(saved = null) }
+        _state.update {
+            it.copy(saved = null)
+        }
     }
 }
