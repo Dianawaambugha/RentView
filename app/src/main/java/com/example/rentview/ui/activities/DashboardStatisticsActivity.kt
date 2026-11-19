@@ -8,21 +8,22 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
 
 class DashboardStatisticsActivity : AppCompatActivity() {
 
-    private lateinit var database: RentViewDatabase
+    private val supabase by lazy {
+        SupabaseClient.client
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        database = RentViewDatabase.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -88,39 +89,92 @@ class DashboardStatisticsActivity : AppCompatActivity() {
     }
 
     private fun loadStatistics(statisticsLayout: LinearLayout) {
+
+        statisticsLayout.removeAllViews()
+
         lifecycleScope.launch {
+            try {
 
-            val statistics = withContext(Dispatchers.IO) {
-                val userDao = database.userDao()
-                val propertyDao = database.propertyDao()
-                val editDao = database.propertyEditRequestDao()
-                val viewingDao = database.viewingDao()
+                // Count registered tenants.
+                val tenants = supabase
+                    .from("profiles")
+                    .select {
+                        filter {
+                            eq("role", "TENANT")
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .size
 
-                listOf(
-                    "Total Registered Tenants" to
-                            userDao.countByRole("Tenant"),
+                // Count registered property owners.
+                val owners = supabase
+                    .from("profiles")
+                    .select {
+                        filter {
+                            eq("role", "PROPERTY_OWNER")
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .size
 
-                    "Total Registered Property Owners" to
-                            userDao.countByRole("Property Owner"),
+                // Count all properties.
+                val properties = supabase
+                    .from("properties")
+                    .select()
+                    .decodeList<JsonObject>()
+                    .size
 
-                    "Total Properties" to
-                            propertyDao.countAll(),
+                // Count properties awaiting approval.
+                val pendingProperties = supabase
+                    .from("properties")
+                    .select {
+                        filter {
+                            eq("property_status", "PENDING")
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .size
 
-                    "Properties Awaiting Approval" to
-                            propertyDao.countByStatus("PENDING"),
+                // Count pending property edit requests.
+                val pendingEdits = supabase
+                    .from("property_edit_requests")
+                    .select {
+                        filter {
+                            eq("edit_status", "PENDING")
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .size
 
-                    "Property Edit Requests Awaiting Review" to
-                            editDao.getByStatus("PENDING").size,
+                // Count all viewing bookings.
+                val viewings = supabase
+                    .from("viewings")
+                    .select()
+                    .decodeList<JsonObject>()
+                    .size
 
-                    "Total Scheduled Viewing Bookings" to
-                            viewingDao.countAll()
+                val statistics = listOf(
+                    "Total Registered Tenants" to tenants,
+                    "Total Registered Property Owners" to owners,
+                    "Total Properties" to properties,
+                    "Properties Awaiting Approval" to pendingProperties,
+                    "Property Edit Requests Awaiting Review" to pendingEdits,
+                    "Total Scheduled Viewing Bookings" to viewings
                 )
-            }
 
-            statisticsLayout.removeAllViews()
+                statisticsLayout.removeAllViews()
 
-            statistics.forEach { (label, value) ->
-                addStatistic(statisticsLayout, label, value)
+                statistics.forEach { (label, value) ->
+                    addStatistic(statisticsLayout, label, value)
+                }
+
+            } catch (e: Exception) {
+
+                Toast.makeText(
+                    this@DashboardStatisticsActivity,
+                    "Unable to load statistics: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

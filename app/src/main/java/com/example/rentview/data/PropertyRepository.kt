@@ -1,177 +1,106 @@
 package com.example.rentview.data
 
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Duration.Companion.seconds
 
-// Repository for property operations using Room.
-class PropertyRepository(
-    private val database: RentViewDatabase
-) {
+class PropertyRepository {
 
-    private val propertyDao = database.propertyDao()
-    private val photoDao = database.propertyPhotoDao()
-    private val userDao = database.userDao()
+    private val client = SupabaseClient.client
 
-    // READ: Get all approved properties with their photos.
+    private fun JsonObject.value(key: String): String {
+        return this[key]?.jsonPrimitive?.content ?: ""
+    }
+
+    private fun JsonObject.longValue(key: String): Long {
+        return value(key).toLongOrNull() ?: 0L
+    }
+
+    private fun JsonObject.doubleValue(key: String): Double {
+        return value(key).toDoubleOrNull() ?: 0.0
+    }
+
+    private suspend fun getCloudPhotos(propertyId: String): List<String> {
+        val photos = client.from("property_photos")
+            .select()
+            .decodeList<JsonObject>()
+            .filter { it.value("property_id") == propertyId }
+
+        return photos.mapNotNull { photo ->
+            val path = photo.value("photo_uri")
+
+            if (path.isBlank()) {
+                null
+            } else {
+                try {
+                    client.storage.from("property-photos")
+                        .createSignedUrl(path, 3600.seconds)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+    }
+
     suspend fun getApprovedProperties(): List<PropertyItem> =
         withContext(Dispatchers.IO) {
 
-            propertyDao.getApprovedProperties().map { property ->
+            val cloudProperties = client.from("properties")
+                .select()
+                .decodeList<JsonObject>()
+                .filter { it.value("property_status") == "APPROVED" }
+
+            cloudProperties.map { property ->
+                val cloudId = property.value("id")
 
                 PropertyItem(
-                    id = property.propertyId,
-                    title = property.title,
-                    location = property.location,
-                    rent = property.rent,
-                    bedrooms = property.bedrooms,
-                    description = property.description,
-                    isApproved = property.propertyStatus == "APPROVED",
-                    photoUris = photoDao.getPhotoUris(property.propertyId)
+                    id = -1L,
+                    title = property.value("title"),
+                    location = property.value("location"),
+                    rent = property.doubleValue("rent"),
+                    bedrooms = property.longValue("bedrooms").toInt(),
+                    description = property.value("description"),
+                    isApproved = true,
+                    photoUris = getCloudPhotos(cloudId),
+                    supabaseId = cloudId
                 )
             }
         }
 
-    // READ: Get one property.
-    suspend fun getProperty(propertyId: Long): PropertyItem? =
+    suspend fun getProperty(propertyId: String): PropertyItem? =
         withContext(Dispatchers.IO) {
 
-            val property = propertyDao.getById(propertyId)
+            if (propertyId.isBlank()) return@withContext null
+
+            val property = client.from("properties")
+                .select {
+                    filter {
+                        eq("id", propertyId)
+                    }
+                }
+                .decodeList<JsonObject>()
+                .firstOrNull()
                 ?: return@withContext null
 
             PropertyItem(
-                id = property.propertyId,
-                title = property.title,
-                location = property.location,
-                rent = property.rent,
-                bedrooms = property.bedrooms,
-                description = property.description,
-                isApproved = property.propertyStatus == "APPROVED"
+                id = -1L,
+                title = property.value("title"),
+                location = property.value("location"),
+                rent = property.doubleValue("rent"),
+                bedrooms = property.longValue("bedrooms").toInt(),
+                description = property.value("description"),
+                isApproved = property.value("property_status") == "APPROVED",
+                photoUris = getCloudPhotos(propertyId),
+                supabaseId = propertyId
             )
         }
 
-    // READ: Count photos belonging to a property.
-    suspend fun getPhotoCount(propertyId: Long): Int =
+    suspend fun getPhotoUris(propertyId: String): List<String> =
         withContext(Dispatchers.IO) {
-            photoDao.countByProperty(propertyId)
+            getCloudPhotos(propertyId)
         }
-
-    // READ: Get photo URIs belonging to a property.
-    suspend fun getPhotoUris(propertyId: Long): List<String> =
-        withContext(Dispatchers.IO) {
-            photoDao.getPhotoUris(propertyId)
-        }
-
-    // TESTING: Insert sample properties without creating duplicates.
-    suspend fun seedSampleProperties(): Int =
-        withContext(Dispatchers.IO) {
-
-            // Do not insert samples if properties already exist.
-            if (propertyDao.countAll() > 0) {
-                return@withContext 0
-            }
-// Find an existing sample owner.
-            var owner = userDao.getByEmail("sample.owner@rentview.test")
-
-// Correct the role if this sample account already exists.
-            if (owner != null && owner.role != "Property Owner") {
-                owner = owner.copy(
-                    role = "Property Owner",
-                    approvalStatus = "APPROVED"
-                )
-                userDao.update(owner)
-            }
-
-// Create the sample owner only if the account does not exist.
-            if (owner == null) {
-                val newOwner = UserEntity(
-                    fullName = "Sample Owner",
-                    email = "sample.owner@rentview.test",
-                    phone = "0700000000",
-                    passwordHash = hashPassword("sample123"),
-                    role = "Property Owner",
-                    approvalStatus = "APPROVED"
-                )
-
-                val ownerId = userDao.insert(newOwner)
-
-                if (ownerId == -1L) {
-                    return@withContext 0
-                }
-
-                owner = userDao.getById(ownerId)
-            }
-
-            val ownerId = owner?.id ?: return@withContext 0
-
-            // Match the existing SQLite sample properties.
-            val samples = listOf(
-                Triple(
-                    "2BR Apartment in Kilimani",
-                    "Kilimani, Nairobi",
-                    65000.0
-                ),
-                Triple(
-                    "Bedsitter near Strathmore",
-                    "Madaraka, Nairobi",
-                    15000.0
-                ),
-                Triple(
-                    "3BR Maisonette",
-                    "Lavington, Nairobi",
-                    120000.0
-                )
-            )
-
-            var inserted = 0
-
-            for ((title, location, rent) in samples) {
-
-                val property = PropertyEntity(
-                    ownerId = ownerId,
-                    title = title,
-                    location = location,
-                    rent = rent,
-                    bedrooms = 2,
-                    description = "Sample listing for testing",
-                    propertyStatus = "APPROVED",
-                    createdAt = currentTimestamp()
-                )
-
-                val propertyId = propertyDao.insert(property)
-
-                if (propertyId != -1L) {
-                    inserted++
-                }
-            }
-
-            inserted
-        }
-    // SHA-256 password hashing helper.
-    private fun hashPassword(password: String): String {
-
-        val bytes = MessageDigest.getInstance("SHA-256")
-            .digest(password.toByteArray(Charsets.UTF_8))
-
-        return bytes.joinToString("") {
-            "%02x".format(it)
-        }
-    }
-
-    // Generate a SQLite-compatible UTC timestamp.
-    private fun currentTimestamp(): String {
-
-        val formatter = SimpleDateFormat(
-            "yyyy-MM-dd HH:mm:ss",
-            Locale.US
-        )
-
-        formatter.timeZone = TimeZone.getTimeZone("UTC")
-
-        return formatter.format(Date())
-    }
 }

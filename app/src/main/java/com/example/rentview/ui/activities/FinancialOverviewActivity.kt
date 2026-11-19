@@ -3,13 +3,16 @@ package com.example.rentview.ui.activities
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.Locale
 
 class FinancialOverviewActivity : AppCompatActivity() {
@@ -18,13 +21,13 @@ class FinancialOverviewActivity : AppCompatActivity() {
     private lateinit var tvTotalAdvertisedRent: TextView
     private lateinit var tvAverageAdvertisedRent: TextView
 
-    private lateinit var database: RentViewDatabase
+    private val supabase by lazy {
+        SupabaseClient.client
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_financial_overview)
-
-        database = RentViewDatabase.getInstance(this)
 
         tvApprovedPropertyCount =
             findViewById(R.id.tvApprovedPropertyCount)
@@ -45,32 +48,57 @@ class FinancialOverviewActivity : AppCompatActivity() {
     private fun loadFinancialOverview() {
 
         lifecycleScope.launch {
+            try {
+                val approvedProperties = supabase
+                    .from("properties")
+                    .select {
+                        filter {
+                            eq("property_status", "APPROVED")
+                        }
+                    }
+                    .decodeList<JsonObject>()
 
-            val (propertyCount, totalRent) = withContext(Dispatchers.IO) {
+                val propertyCount = approvedProperties.size
 
-                val approvedProperties =
-                    database.propertyDao().getApprovedProperties()
+                val totalRent = approvedProperties.sumOf { property ->
+                    property["rent"]
+                        ?.jsonPrimitive?.doubleOrNull ?: 0.0
+                }
 
-                val count = approvedProperties.size
+                val averageRent = if (propertyCount > 0) {
+                    totalRent / propertyCount
+                } else {
+                    0.0
+                }
 
-                val total = approvedProperties.sumOf { it.rent }
+                tvApprovedPropertyCount.text =
+                    propertyCount.toString()
 
-                Pair(count, total)
+                tvTotalAdvertisedRent.text =
+                    "KSh ${
+                        String.format(
+                            Locale.getDefault(),
+                            "%,.2f",
+                            totalRent
+                        )
+                    }"
+
+                tvAverageAdvertisedRent.text =
+                    "KSh ${
+                        String.format(
+                            Locale.getDefault(),
+                            "%,.2f",
+                            averageRent
+                        )
+                    }"
+
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@FinancialOverviewActivity,
+                    "Unable to load financial overview: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
-
-            val averageRent = if (propertyCount > 0) {
-                totalRent / propertyCount
-            } else {
-                0.0
-            }
-
-            tvApprovedPropertyCount.text = propertyCount.toString()
-
-            tvTotalAdvertisedRent.text =
-                "KSh ${String.format(Locale.getDefault(), "%,.2f", totalRent)}"
-
-            tvAverageAdvertisedRent.text =
-                "KSh ${String.format(Locale.getDefault(), "%,.2f", averageRent)}"
         }
     }
 }

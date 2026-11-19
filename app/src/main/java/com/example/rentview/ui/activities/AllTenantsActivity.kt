@@ -2,27 +2,38 @@ package com.example.rentview.ui.activities
 
 import android.os.Bundle
 import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.rentview.data.RentViewDatabase
-import com.example.rentview.data.UserEntity
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class AllTenantsActivity : AppCompatActivity() {
 
-    private lateinit var database: RentViewDatabase
     private lateinit var tenantsContainer: LinearLayout
+
+    private val supabase by lazy {
+        SupabaseClient.client
+    }
+
+    private data class Tenant(
+        val id: String,
+        val fullName: String,
+        val email: String,
+        val phone: String,
+        val approvalStatus: String
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        database = RentViewDatabase.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -46,7 +57,9 @@ class AllTenantsActivity : AppCompatActivity() {
 
         val backButton = Button(this).apply {
             text = "Back to Dashboard"
-            setOnClickListener { finish() }
+            setOnClickListener {
+                finish()
+            }
         }
 
         mainLayout.addView(title)
@@ -69,37 +82,70 @@ class AllTenantsActivity : AppCompatActivity() {
 
     private fun displayTenants() {
 
+        tenantsContainer.removeAllViews()
+
         lifecycleScope.launch {
+            try {
+                val profiles = supabase
+                    .from("profiles")
+                    .select {
+                        filter {
+                            eq("role", "TENANT")
+                        }
+                    }
+                    .decodeList<JsonObject>()
 
-            val tenants = withContext(Dispatchers.IO) {
-                database.userDao().getAllTenants()
-            }
+                val tenants = profiles.map { profile ->
 
-            tenantsContainer.removeAllViews()
+                    Tenant(
+                        id = profile["id"]
+                            ?.jsonPrimitive?.content ?: "Unknown",
 
-            if (tenants.isEmpty()) {
+                        fullName = profile["full_name"]
+                            ?.jsonPrimitive?.content ?: "Unknown",
 
-                val emptyMessage = TextView(this@AllTenantsActivity).apply {
-                    text = "No registered tenants found."
-                    textSize = 16f
-                    gravity = Gravity.CENTER
-                    setPadding(16, 40, 16, 40)
+                        email = profile["email"]
+                            ?.jsonPrimitive?.content ?: "Not provided",
+
+                        phone = profile["phone"]
+                            ?.jsonPrimitive?.content ?: "Not provided",
+
+                        approvalStatus = profile["approval_status"]
+                            ?.jsonPrimitive?.content ?: "UNKNOWN"
+                    )
                 }
 
-                tenantsContainer.addView(emptyMessage)
-                return@launch
-            }
+                tenantsContainer.removeAllViews()
 
-            tenants.forEach { tenant ->
-                addTenantCard(tenant)
+                if (tenants.isEmpty()) {
+                    tenantsContainer.addView(
+                        TextView(this@AllTenantsActivity).apply {
+                            text = "No registered tenants found."
+                            textSize = 16f
+                            gravity = Gravity.CENTER
+                            setPadding(16, 40, 16, 40)
+                        }
+                    )
+                    return@launch
+                }
+
+                tenants.forEach { tenant ->
+                    addTenantCard(tenant)
+                }
+
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@AllTenantsActivity,
+                    "Unable to load tenants: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
 
-    private fun addTenantCard(tenant: UserEntity) {
+    private fun addTenantCard(tenant: Tenant) {
 
         val tenantCard = TextView(this).apply {
-
             text = """
                 Tenant ID: ${tenant.id}
                 Name: ${tenant.fullName}
@@ -117,8 +163,8 @@ class AllTenantsActivity : AppCompatActivity() {
         }
 
         val params = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
         params.setMargins(0, 0, 0, 16)

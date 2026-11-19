@@ -1,11 +1,20 @@
 package com.example.rentview.ui.activities
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
+import com.example.rentview.data.SupabaseAuthRepository
+import kotlinx.coroutines.launch
 
 class HomeActivity : AppCompatActivity() {
 
@@ -13,6 +22,15 @@ class HomeActivity : AppCompatActivity() {
         private const val ROLE_TENANT = "Tenant"
         private const val ROLE_OWNER = "Property Owner"
     }
+
+    private val authRepository by lazy {
+        SupabaseAuthRepository()
+    }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            // The app continues working whether permission is granted or denied.
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,73 +51,119 @@ class HomeActivity : AppCompatActivity() {
         greeting.text = "Welcome, $userName!"
         userRole.text = "Account type: $role"
 
-        if (role == ROLE_OWNER) {
+        when (role) {
+            ROLE_OWNER -> {
+                dashboardTitle.text = "Property Owner Dashboard"
+                primaryButton.text = "Add a Property"
+                secondaryButton.text = "My Properties"
+                profile.text =
+                    "Manage your properties and view requests from potential tenants."
+            }
 
-            dashboardTitle.text = "Property Owner Dashboard"
-            primaryButton.text = "Add a Property"
-            secondaryButton.text = "My Properties"
-            profile.text =
-                "Manage your properties and view requests from potential tenants."
+            ROLE_TENANT -> {
+                dashboardTitle.text = "Tenant Dashboard"
+                primaryButton.text = "Explore Properties"
+                secondaryButton.text = "My Viewings"
+                profile.text =
+                    "Discover rental properties and manage your viewing appointments."
 
-        } else {
+                requestNotificationPermission()
+            }
 
-            dashboardTitle.text = "Tenant Dashboard"
-            primaryButton.text = "Explore Properties"
-            secondaryButton.text = "My Viewings"
-            profile.text =
-                "Discover rental properties and manage your viewing appointments."
+            else -> {
+                Toast.makeText(
+                    this,
+                    "Invalid account role.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                finish()
+                return
+            }
         }
 
         primaryButton.setOnClickListener {
+            when (role) {
+                ROLE_OWNER -> {
+                    val intent = Intent(this, AddPropertyActivity::class.java)
+                    intent.putExtra("USER_ID", userId)
+                    startActivity(intent)
+                }
 
-            if (role == ROLE_OWNER) {
-
-                val addPropertyIntent = Intent(
-                    this,
-                    AddPropertyActivity::class.java
-                )
-
-                addPropertyIntent.putExtra("USER_ID", userId)
-                startActivity(addPropertyIntent)
-
-            } else if (role == ROLE_TENANT) {
-
-                val propertyListIntent = Intent(
-                    this,
-                    PropertyListActivity::class.java
-                )
-
-                propertyListIntent.putExtra("USER_ID", userId)
-                startActivity(propertyListIntent)
+                ROLE_TENANT -> {
+                    val intent = Intent(this, PropertyListActivity::class.java)
+                    intent.putExtra("USER_ID", userId)
+                    startActivity(intent)
+                }
             }
         }
 
         secondaryButton.setOnClickListener {
+            when (role) {
+                ROLE_OWNER -> {
+                    val intent = Intent(this, MyPropertiesActivity::class.java)
+                    intent.putExtra("USER_ID", userId)
+                    startActivity(intent)
+                }
 
-            if (role == ROLE_OWNER) {
-
-                val propertiesIntent = Intent(
-                    this,
-                    MyPropertiesActivity::class.java
-                )
-
-                propertiesIntent.putExtra("USER_ID", userId)
-                startActivity(propertiesIntent)
-
-            } else if (role == ROLE_TENANT) {
-
-                val viewingsIntent = Intent(
-                    this,
-                    MyViewingsActivity::class.java
-                )
-
-                viewingsIntent.putExtra("USER_ID", userId)
-                startActivity(viewingsIntent)
+                ROLE_TENANT -> {
+                    val intent = Intent(this, MyViewingsActivity::class.java)
+                    intent.putExtra("USER_ID", userId)
+                    startActivity(intent)
+                }
             }
         }
 
         logoutButton.setOnClickListener {
-            finish()
+            logoutButton.isEnabled = false
+
+            lifecycleScope.launch {
+                try {
+                    authRepository.logout()
+
+                    Toast.makeText(
+                        this@HomeActivity,
+                        "You have been logged out.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    val intent = Intent(
+                        this@HomeActivity,
+                        MainActivity::class.java
+                    ).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    }
+
+                    startActivity(intent)
+                    finish()
+
+                } catch (exception: Exception) {
+                    Toast.makeText(
+                        this@HomeActivity,
+                        exception.message ?: "Logout failed. Please try again.",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    logoutButton.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+
+            val permissionStatus = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+
+            if (permissionStatus != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+            }
         }
     }
 }

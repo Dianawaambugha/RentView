@@ -1,9 +1,5 @@
 package com.example.rentview.ui.activities
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.adapters.*
-
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -20,6 +16,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.example.rentview.R
+import com.example.rentview.data.ViewingItem
 import com.example.rentview.data.ViewingTime
 import com.example.rentview.ui.adapters.ViewingAdapter
 import com.example.rentview.viewmodel.MyViewingsState
@@ -47,33 +45,23 @@ class MyViewingsActivity : AppCompatActivity() {
 
         val adapter = ViewingAdapter(
             onReschedule = { viewing ->
-                val rescheduleIntent = Intent(this, ScheduleViewingActivity::class.java)
-                rescheduleIntent.putExtra("VIEWING_ID", viewing.id)
-                rescheduleIntent.putExtra("USER_ID", userId)
-                startActivity(rescheduleIntent)
+                openRescheduleScreen(viewing)
             },
             onCancel = { viewing ->
-                AlertDialog.Builder(this)
-                    .setTitle("Cancel viewing")
-                    .setMessage(
-                        "Cancel your viewing of ${viewing.propertyTitle} on " +
-                                "${ViewingTime.displayDate(viewing.date)} at ${viewing.timeSlot}?"
-                    )
-                    .setPositiveButton("Cancel viewing") { _, _ ->
-                        viewModel.cancel(viewing, userId)
-                    }
-                    .setNegativeButton("Keep it", null)
-                    .show()
+                confirmCancellation(viewing)
             }
         )
 
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
-        backButton.setOnClickListener { finish() }
+        backButton.setOnClickListener {
+            finish()
+        }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+
                 launch {
                     viewModel.state.collect { state ->
 
@@ -92,16 +80,21 @@ class MyViewingsActivity : AppCompatActivity() {
                             }
 
                             is MyViewingsState.Empty -> {
+                                adapter.submitList(emptyList())
                                 stateText.text = "You have no viewings booked yet."
                                 stateButton.text = "Browse properties"
-                                stateButton.setOnClickListener { openPropertyList() }
+                                stateButton.setOnClickListener {
+                                    openPropertyList()
+                                }
                                 stateLayout.visibility = View.VISIBLE
                             }
 
                             is MyViewingsState.Error -> {
                                 stateText.text = state.message
                                 stateButton.text = "Try again"
-                                stateButton.setOnClickListener { viewModel.load(userId) }
+                                stateButton.setOnClickListener {
+                                    viewModel.load(userId)
+                                }
                                 stateLayout.visibility = View.VISIBLE
                             }
                         }
@@ -116,6 +109,7 @@ class MyViewingsActivity : AppCompatActivity() {
                                 message,
                                 Toast.LENGTH_LONG
                             ).show()
+
                             viewModel.messageShown()
                         }
                     }
@@ -124,14 +118,52 @@ class MyViewingsActivity : AppCompatActivity() {
         }
     }
 
-    // Reload whenever the screen comes back (e.g. after rescheduling).
+    private fun openRescheduleScreen(viewing: ViewingItem) {
+        val rescheduleIntent = Intent(
+            this,
+            ScheduleViewingActivity::class.java
+        )
+
+        // Preserve compatibility with the old local database.
+        rescheduleIntent.putExtra("VIEWING_ID", viewing.id)
+        rescheduleIntent.putExtra("USER_ID", userId)
+
+        // Pass Supabase UUIDs for cloud bookings.
+        viewing.supabaseId?.let {
+            rescheduleIntent.putExtra("VIEWING_ID_STRING", it)
+        }
+
+        viewing.supabasePropertyId?.let {
+            rescheduleIntent.putExtra("PROPERTY_ID_STRING", it)
+        }
+
+        startActivity(rescheduleIntent)
+    }
+
+    private fun confirmCancellation(viewing: ViewingItem) {
+        AlertDialog.Builder(this)
+            .setTitle("Cancel viewing")
+            .setMessage(
+                "Cancel your viewing of ${viewing.propertyTitle} on " +
+                        "${ViewingTime.displayDate(viewing.date)} at ${viewing.timeSlot}?"
+            )
+            .setPositiveButton("Cancel viewing") { _, _ ->
+                viewModel.cancel(viewing, userId)
+            }
+            .setNegativeButton("Keep it", null)
+            .show()
+    }
+
     override fun onResume() {
         super.onResume()
         viewModel.load(userId)
     }
 
     private fun openPropertyList() {
-        val listIntent = Intent(this, PropertyListActivity::class.java)
+        val listIntent = Intent(
+            this,
+            PropertyListActivity::class.java
+        )
         listIntent.putExtra("USER_ID", userId)
         startActivity(listIntent)
     }

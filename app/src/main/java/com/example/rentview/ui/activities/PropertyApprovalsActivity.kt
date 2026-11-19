@@ -4,17 +4,28 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import com.example.rentview.ui.ImageLoader
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlin.time.Duration.Companion.seconds
 import java.util.Locale
 
 class PropertyApprovalsActivity : AppCompatActivity() {
@@ -23,15 +34,17 @@ class PropertyApprovalsActivity : AppCompatActivity() {
         private const val STATUS_PENDING = "PENDING"
         private const val STATUS_APPROVED = "APPROVED"
         private const val STATUS_REJECTED = "REJECTED"
+        private const val ROLE_ADMIN = "ADMIN"
     }
 
-    private lateinit var database: RentViewDatabase
     private lateinit var propertyContainer: LinearLayout
+
+    private val supabase by lazy {
+        SupabaseClient.client
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        database = RentViewDatabase.getInstance(applicationContext)
 
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -71,11 +84,12 @@ class PropertyApprovalsActivity : AppCompatActivity() {
             isAllCaps = false
 
             setOnClickListener {
-                val intent = Intent(
-                    this@PropertyApprovalsActivity,
-                    AdminDashboardActivity::class.java
+                startActivity(
+                    Intent(
+                        this@PropertyApprovalsActivity,
+                        AdminDashboardActivity::class.java
+                    )
                 )
-                startActivity(intent)
                 finish()
             }
         }
@@ -89,8 +103,6 @@ class PropertyApprovalsActivity : AppCompatActivity() {
         )
 
         setContentView(rootLayout)
-
-        loadPendingProperties()
     }
 
     override fun onResume() {
@@ -98,6 +110,29 @@ class PropertyApprovalsActivity : AppCompatActivity() {
 
         if (::propertyContainer.isInitialized) {
             loadPendingProperties()
+        }
+    }
+
+    private suspend fun requireAdmin() {
+
+        val adminId = supabase.auth.currentUserOrNull()?.id
+            ?: throw Exception("Please log in again.")
+
+        val profiles = supabase.from("profiles")
+            .select {
+                filter {
+                    eq("id", adminId)
+                }
+            }
+            .decodeList<JsonObject>()
+
+        val role = profiles.firstOrNull()
+            ?.get("role")
+            ?.jsonPrimitive
+            ?.contentOrNull
+
+        if (role != ROLE_ADMIN) {
+            throw Exception("Administrator access is required.")
         }
     }
 
@@ -109,19 +144,15 @@ class PropertyApprovalsActivity : AppCompatActivity() {
 
             try {
 
-                val pendingProperties = withContext(Dispatchers.IO) {
+                requireAdmin()
 
-                    val properties = database.propertyDao()
-                        .getByStatus(STATUS_PENDING)
-
-                    properties.map { property ->
-
-                        val owner = database.userDao()
-                            .getById(property.ownerId)
-
-                        property to owner
+                val pendingProperties = supabase.from("properties")
+                    .select {
+                        filter {
+                            eq("property_status", STATUS_PENDING)
+                        }
                     }
-                }
+                    .decodeList<JsonObject>()
 
                 if (pendingProperties.isEmpty()) {
 
@@ -138,17 +169,95 @@ class PropertyApprovalsActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                pendingProperties.forEach { (property, owner) ->
+                for (property in pendingProperties) {
+
+                    val propertyId = property["id"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull
+                        ?: continue
+
+                    val ownerId = property["owner_id"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull
+                        ?: ""
+
+                    val title = property["title"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull.orEmpty()
+
+                    val location = property["location"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull.orEmpty()
+
+                    val rent = property["rent"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull?.toDoubleOrNull() ?: 0.0
+
+                    val bedrooms = property["bedrooms"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull?.toIntOrNull() ?: 0
+
+                    val description = property["description"]
+                        ?.jsonPrimitive
+                        ?.contentOrNull.orEmpty()
+
+                    val ownerProfiles = supabase.from("profiles")
+                        .select {
+                            filter {
+                                eq("id", ownerId)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+
+                    val owner = ownerProfiles.firstOrNull()
+
+                    val ownerName = owner?.get("full_name")
+                        ?.jsonPrimitive
+                        ?.contentOrNull ?: "Unknown owner"
+
+                    val ownerEmail = owner?.get("email")
+                        ?.jsonPrimitive
+                        ?.contentOrNull ?: "Unavailable"
+
+                    val photoRows = supabase.from("property_photos")
+                        .select {
+                            filter {
+                                eq("property_id", propertyId)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+
+                    val photoUrls = mutableListOf<String>()
+
+                    for (photo in photoRows) {
+
+                        val photoPath = photo["photo_uri"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull ?: continue
+
+                        try {
+
+                            val signedUrl = supabase.storage
+                                .from("property-photos")
+                                .createSignedUrl(photoPath, 3600.seconds)
+
+                            photoUrls.add(signedUrl)
+
+                        } catch (_: Exception) {
+                            // Continue loading other photos.
+                        }
+                    }
 
                     addPropertyCard(
-                        property.propertyId,
-                        property.title,
-                        property.location,
-                        property.rent,
-                        property.bedrooms,
-                        property.description,
-                        owner?.fullName ?: "Unknown owner",
-                        owner?.email ?: "Unavailable"
+                        propertyId = propertyId,
+                        title = title,
+                        location = location,
+                        rent = rent,
+                        bedrooms = bedrooms,
+                        description = description,
+                        ownerName = ownerName,
+                        ownerEmail = ownerEmail,
+                        photoUris = photoUrls
                     )
                 }
 
@@ -164,20 +273,64 @@ class PropertyApprovalsActivity : AppCompatActivity() {
     }
 
     private fun addPropertyCard(
-        propertyId: Long,
+        propertyId: String,
         title: String,
         location: String,
         rent: Double,
         bedrooms: Int,
         description: String,
         ownerName: String,
-        ownerEmail: String
+        ownerEmail: String,
+        photoUris: List<String>
     ) {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 20, 20, 20)
             setBackgroundColor(android.graphics.Color.WHITE)
+        }
+
+        if (photoUris.isNotEmpty()) {
+
+            val photoHeading = TextView(this).apply {
+                text = "Property Photos"
+                textSize = 18f
+                setPadding(0, 0, 0, 12)
+            }
+
+            card.addView(photoHeading)
+
+            photoUris.forEach { photoUri ->
+
+                val propertyImage = ImageView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        220
+                    ).apply {
+                        bottomMargin = 12
+                    }
+
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                }
+
+                card.addView(propertyImage)
+
+                ImageLoader.load(
+                    propertyImage,
+                    photoUri,
+                    600
+                )
+            }
+
+        } else {
+
+            val noPhotoMessage = TextView(this).apply {
+                text = "No property photos uploaded."
+                textSize = 14f
+                setPadding(0, 0, 0, 12)
+            }
+
+            card.addView(noPhotoMessage)
         }
 
         val details = TextView(this).apply {
@@ -258,7 +411,7 @@ class PropertyApprovalsActivity : AppCompatActivity() {
     }
 
     private fun confirmPropertyDecision(
-        propertyId: Long,
+        propertyId: String,
         title: String,
         status: String
     ) {
@@ -279,46 +432,53 @@ class PropertyApprovalsActivity : AppCompatActivity() {
 
                     try {
 
-                        val updated = withContext(Dispatchers.IO) {
+                        requireAdmin()
 
-                            val property = database.propertyDao()
-                                .getById(propertyId)
-
-                            if (property == null ||
-                                property.propertyStatus != STATUS_PENDING
-                            ) {
-                                false
-                            } else {
-
-                                database.propertyDao().updateStatus(
-                                    propertyId,
-                                    status
-                                )
-
-                                database.propertyDao()
-                                    .getById(propertyId)
-                                    ?.propertyStatus == status
-                            }
+                        val updatePayload = buildJsonObject {
+                            put("property_status", status)
                         }
 
-                        if (updated) {
+                        supabase.from("properties")
+                            .update(updatePayload) {
+                                filter {
+                                    eq("id", propertyId)
+                                    eq("property_status", STATUS_PENDING)
+                                }
+                            }
+
+                        val updatedProperties = supabase.from("properties")
+                            .select {
+                                filter {
+                                    eq("id", propertyId)
+                                    eq("property_status", status)
+                                }
+                            }
+                            .decodeList<JsonObject>()
+
+                        if (updatedProperties.isNotEmpty()) {
+
+                            val message = if (status == STATUS_APPROVED) {
+                                "Property approved successfully."
+                            } else {
+                                "Property rejected successfully."
+                            }
 
                             Toast.makeText(
                                 this@PropertyApprovalsActivity,
-                                "Property ${action}d successfully.",
-                                Toast.LENGTH_SHORT
+                                message,
+                                Toast.LENGTH_LONG
                             ).show()
-
-                            loadPendingProperties()
 
                         } else {
 
                             Toast.makeText(
                                 this@PropertyApprovalsActivity,
-                                "Could not update the property status.",
+                                "Property status was not updated. Check administrator permissions.",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
+
+                        loadPendingProperties()
 
                     } catch (e: Exception) {
 

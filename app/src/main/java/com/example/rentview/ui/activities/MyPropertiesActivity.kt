@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -12,11 +13,17 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import com.example.rentview.ui.ImageLoader
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.util.Locale
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Duration.Companion.seconds
 
 class MyPropertiesActivity : AppCompatActivity() {
 
@@ -25,27 +32,14 @@ class MyPropertiesActivity : AppCompatActivity() {
         private const val STATUS_PENDING = "PENDING"
     }
 
-    private var ownerId: Long = -1L
     private lateinit var propertiesContainer: LinearLayout
-    private lateinit var database: RentViewDatabase
+
+    private val supabase by lazy {
+        SupabaseClient.client
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        ownerId = intent.getLongExtra("USER_ID", -1L)
-
-        if (ownerId == -1L) {
-            Toast.makeText(
-                this,
-                getString(R.string.owner_not_identified),
-                Toast.LENGTH_LONG
-            ).show()
-
-            finish()
-            return
-        }
-
-        database = RentViewDatabase.getInstance(applicationContext)
 
         val scrollView = ScrollView(this)
 
@@ -56,8 +50,6 @@ class MyPropertiesActivity : AppCompatActivity() {
 
         scrollView.addView(propertiesContainer)
         setContentView(scrollView)
-
-        displayProperties()
     }
 
     override fun onResume() {
@@ -71,24 +63,23 @@ class MyPropertiesActivity : AppCompatActivity() {
     private fun displayProperties() {
 
         lifecycleScope.launch {
-
             propertiesContainer.removeAllViews()
 
             try {
+                val cloudUserId = supabase.auth
+                    .currentSessionOrNull()
+                    ?.user
+                    ?.id
+                    ?: throw Exception("Please log in again.")
 
-                val properties = withContext(Dispatchers.IO) {
-
-                    val propertyList = database.propertyDao().getByOwner(ownerId)
-
-                    propertyList.map { property ->
-
-                        val pendingEdit = database.propertyEditRequestDao()
-                            .getByProperty(property.propertyId)
-                            .any { it.editStatus == STATUS_PENDING }
-
-                        property to pendingEdit
+                val propertyRows = supabase
+                    .from("properties")
+                    .select {
+                        filter {
+                            eq("owner_id", cloudUserId)
+                        }
                     }
-                }
+                    .decodeList<JsonObject>()
 
                 val heading = TextView(this@MyPropertiesActivity).apply {
                     text = getString(R.string.my_properties_title)
@@ -98,60 +89,172 @@ class MyPropertiesActivity : AppCompatActivity() {
 
                 propertiesContainer.addView(heading)
 
-                if (properties.isEmpty()) {
+                if (propertyRows.isEmpty()) {
 
-                    val emptyMessage = TextView(this@MyPropertiesActivity).apply {
-                        text = getString(R.string.my_properties_empty)
-                        textSize = 18f
-                        gravity = Gravity.CENTER
-                    }
+                    val emptyMessage =
+                        TextView(this@MyPropertiesActivity).apply {
+                            text = getString(R.string.my_properties_empty)
+                            textSize = 18f
+                            gravity = Gravity.CENTER
+                        }
 
                     propertiesContainer.addView(emptyMessage)
 
                 } else {
 
-                    properties.forEach { (property, hasPendingEdit) ->
+                    for (property in propertyRows) {
 
-                        val propertyCard = LinearLayout(this@MyPropertiesActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            setPadding(20, 20, 20, 20)
-                            elevation = 4f
-                            setBackgroundColor(0xFFF2F2F2.toInt())
+                        val propertyId = property["id"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            ?: continue
+
+                        val title = property["title"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            .orEmpty()
+
+                        val location = property["location"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            .orEmpty()
+
+                        val rent = property["rent"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            ?.toDoubleOrNull() ?: 0.0
+
+                        val bedrooms = property["bedrooms"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            ?.toIntOrNull() ?: 0
+
+                        val description = property["description"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            .orEmpty()
+
+                        val status = property["property_status"]
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                            .orEmpty()
+
+                        val pendingRequests = supabase
+                            .from("property_edit_requests")
+                            .select {
+                                filter {
+                                    eq("property_id", propertyId)
+                                    eq("edit_status", STATUS_PENDING)
+                                }
+                            }
+                            .decodeList<JsonObject>()
+
+                        val hasPendingEdit = pendingRequests.isNotEmpty()
+
+                        val photoRows = supabase
+                            .from("property_photos")
+                            .select {
+                                filter {
+                                    eq("property_id", propertyId)
+                                }
+                            }
+                            .decodeList<JsonObject>()
+
+                        val photoUrls = mutableListOf<String>()
+
+                        for (photo in photoRows) {
+
+                            val path = photo["photo_uri"]
+                                ?.jsonPrimitive
+                                ?.contentOrNull
+                                ?: continue
+
+                            try {
+                                val signedUrl = supabase.storage
+                                    .from("property-photos")
+                                    .createSignedUrl(path, 3600.seconds)
+
+                                photoUrls.add(signedUrl)
+
+                            } catch (_: Exception) {
+                                // Continue displaying the remaining photos.
+                            }
+                        }
+
+                        val propertyCard =
+                            LinearLayout(this@MyPropertiesActivity).apply {
+                                orientation = LinearLayout.VERTICAL
+                                setPadding(20, 20, 20, 20)
+                                elevation = 4f
+                                setBackgroundColor(0xFFF2F2F2.toInt())
+                            }
+
+                        photoUrls.forEach { photoUrl ->
+
+                            val propertyImage =
+                                ImageView(this@MyPropertiesActivity).apply {
+                                    layoutParams = LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        220
+                                    ).apply {
+                                        bottomMargin = 12
+                                    }
+
+                                    scaleType = ImageView.ScaleType.CENTER_CROP
+                                }
+
+                            propertyCard.addView(propertyImage)
+
+                            ImageLoader.load(
+                                propertyImage,
+                                photoUrl,
+                                600
+                            )
                         }
 
                         val formattedRent = String.format(
-                            Locale.getDefault(),
+                            java.util.Locale.getDefault(),
                             "%,.2f",
-                            property.rent
+                            rent
                         )
 
-                        val propertyDetails = TextView(this@MyPropertiesActivity).apply {
-                            text = getString(
-                                R.string.property_card_details,
-                                property.title,
-                                property.location,
-                                formattedRent,
-                                property.bedrooms,
-                                property.description,
-                                property.propertyStatus
-                            )
+                        val propertyDetails =
+                            TextView(this@MyPropertiesActivity).apply {
+                                text = getString(
+                                    R.string.property_card_details,
+                                    title,
+                                    location,
+                                    formattedRent,
+                                    bedrooms,
+                                    description,
+                                    status
+                                )
 
-                            textSize = 16f
+                                textSize = 16f
+                            }
+
+                        propertyCard.addView(propertyDetails)
+
+                        if (hasPendingEdit) {
+
+                            val pendingMessage =
+                                TextView(this@MyPropertiesActivity).apply {
+                                    text = getString(
+                                        R.string.property_edit_pending
+                                    )
+                                    textSize = 14f
+                                    setPadding(0, 12, 0, 12)
+                                }
+
+                            propertyCard.addView(pendingMessage)
                         }
 
-                        propertyCard.addView(
-                            propertyDetails,
-                            LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT
-                            )
-                        )
+                        if (status == STATUS_APPROVED) {
 
-                        if (property.propertyStatus == STATUS_APPROVED) {
-
-                            val editButton = Button(this@MyPropertiesActivity).apply {
-                                text = getString(R.string.edit_property)
-                            }
+                            val editButton =
+                                Button(this@MyPropertiesActivity).apply {
+                                    text = getString(R.string.edit_property)
+                                }
 
                             editButton.setOnClickListener {
 
@@ -159,7 +262,9 @@ class MyPropertiesActivity : AppCompatActivity() {
 
                                     Toast.makeText(
                                         this@MyPropertiesActivity,
-                                        getString(R.string.property_edit_pending),
+                                        getString(
+                                            R.string.property_edit_pending
+                                        ),
                                         Toast.LENGTH_LONG
                                     ).show()
 
@@ -170,14 +275,15 @@ class MyPropertiesActivity : AppCompatActivity() {
                                         EditPropertyActivity::class.java
                                     )
 
+                                    // This is the Supabase UUID, not a Room Long ID.
                                     editIntent.putExtra(
                                         "PROPERTY_ID",
-                                        property.propertyId
+                                        propertyId
                                     )
 
                                     editIntent.putExtra(
-                                        "OWNER_ID",
-                                        ownerId
+                                        "PROPERTY_ID_STRING",
+                                        propertyId
                                     )
 
                                     startActivity(editIntent)
@@ -199,13 +305,14 @@ class MyPropertiesActivity : AppCompatActivity() {
                     }
                 }
 
-                val backButton = Button(this@MyPropertiesActivity).apply {
-                    text = getString(R.string.back_to_dashboard)
+                val backButton =
+                    Button(this@MyPropertiesActivity).apply {
+                        text = getString(R.string.back_to_dashboard)
 
-                    setOnClickListener {
-                        finish()
+                        setOnClickListener {
+                            finish()
+                        }
                     }
-                }
 
                 propertiesContainer.addView(backButton)
 

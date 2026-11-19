@@ -7,20 +7,38 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.rentview.data.RentViewDatabase
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 class ViewingRequestsActivity : AppCompatActivity() {
 
     private lateinit var requestsContainer: LinearLayout
 
-    private val database by lazy {
-        RentViewDatabase.getInstance(applicationContext)
+    private val supabase by lazy {
+        SupabaseClient.client
     }
+
+    private data class ViewingDetails(
+        val propertyTitle: String,
+        val propertyLocation: String,
+        val rent: Double,
+        val ownerName: String,
+        val ownerPhone: String,
+        val ownerEmail: String,
+        val tenantName: String,
+        val tenantPhone: String,
+        val tenantEmail: String,
+        val viewingDate: String,
+        val viewingSlot: String,
+        val status: String
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,146 +89,201 @@ class ViewingRequestsActivity : AppCompatActivity() {
         displayViewingRequests()
     }
 
+    override fun onResume() {
+        super.onResume()
+
+        if (::requestsContainer.isInitialized) {
+            displayViewingRequests()
+        }
+    }
+
     private fun displayViewingRequests() {
 
         requestsContainer.removeAllViews()
 
         lifecycleScope.launch {
+            try {
+                val viewings = supabase
+                    .from("viewings")
+                    .select()
+                    .decodeList<JsonObject>()
 
-            val requests = withContext(Dispatchers.IO) {
+                val requestDetails = mutableListOf<ViewingDetails>()
 
-                val propertyDao = database.propertyDao()
-                val viewingDao = database.viewingDao()
-                val userDao = database.userDao()
+                for (viewing in viewings) {
 
-                val allProperties = propertyDao.getAll()
+                    val propertyId = viewing["property_id"]
+                        ?.jsonPrimitive?.content ?: continue
 
-                val requestDetails = mutableListOf<String>()
+                    val tenantId = viewing["tenant_id"]
+                        ?.jsonPrimitive?.content ?: continue
 
-                for (property in allProperties) {
-
-                    val viewings =
-                        viewingDao.getByProperty(property.propertyId)
-
-                    val owner =
-                        userDao.getById(property.ownerId)
-
-                    for (viewing in viewings) {
-
-                        val tenant =
-                            userDao.getById(viewing.tenantId)
-
-                        val propertyTitle =
-                            property.title.ifBlank {
-                                "Unknown Property"
+                    val propertyRows = supabase
+                        .from("properties")
+                        .select {
+                            filter {
+                                eq("id", propertyId)
                             }
+                        }
+                        .decodeList<JsonObject>()
 
-                        val propertyLocation =
-                            property.location.ifBlank {
-                                "Location unavailable"
+                    val property = propertyRows.firstOrNull()
+                        ?: continue
+
+                    val ownerId = property["owner_id"]
+                        ?.jsonPrimitive?.content ?: continue
+
+                    val ownerRows = supabase
+                        .from("profiles")
+                        .select {
+                            filter {
+                                eq("id", ownerId)
                             }
+                        }
+                        .decodeList<JsonObject>()
 
-                        val ownerName =
-                            owner?.fullName ?: "Unknown Owner"
-
-                        val ownerPhone =
-                            owner?.phone ?: "Not provided"
-
-                        val ownerEmail =
-                            owner?.email ?: "Not provided"
-
-                        val tenantName =
-                            tenant?.fullName ?: "Unknown Tenant"
-
-                        val tenantPhone =
-                            tenant?.phone ?: "Not provided"
-
-                        val tenantEmail =
-                            tenant?.email ?: "Not provided"
-
-                        val viewingDate =
-                            viewing.viewingDate.ifBlank {
-                                "Not specified"
+                    val tenantRows = supabase
+                        .from("profiles")
+                        .select {
+                            filter {
+                                eq("id", tenantId)
                             }
+                        }
+                        .decodeList<JsonObject>()
 
-                        val viewingSlot =
-                            viewing.viewingSlot.ifBlank {
-                                "Not specified"
-                            }
+                    val owner = ownerRows.firstOrNull()
+                    val tenant = tenantRows.firstOrNull()
 
-                        val details = """
-                            PROPERTY INFORMATION
+                    requestDetails.add(
+                        ViewingDetails(
+                            propertyTitle = property["title"]
+                                ?.jsonPrimitive?.content
+                                ?: "Unknown Property",
 
-                            Property: $propertyTitle
-                            Location: $propertyLocation
-                            Monthly Rent: KES ${"%,.2f".format(property.rent)}
+                            propertyLocation = property["location"]
+                                ?.jsonPrimitive?.content
+                                ?: "Location unavailable",
 
-                            OWNER INFORMATION
+                            rent = property["rent"]
+                                ?.jsonPrimitive?.doubleOrNull ?: 0.0,
 
-                            Owner Name: $ownerName
-                            Owner Phone: $ownerPhone
-                            Owner Email: $ownerEmail
+                            ownerName = owner?.get("full_name")
+                                ?.jsonPrimitive?.content
+                                ?: "Unknown Owner",
 
-                            TENANT INFORMATION
+                            ownerPhone = owner?.get("phone")
+                                ?.jsonPrimitive?.content
+                                ?: "Not provided",
 
-                            Tenant Name: $tenantName
-                            Tenant Phone: $tenantPhone
-                            Tenant Email: $tenantEmail
+                            ownerEmail = owner?.get("email")
+                                ?.jsonPrimitive?.content
+                                ?: "Not provided",
 
-                            VIEWING APPOINTMENT
+                            tenantName = tenant?.get("full_name")
+                                ?.jsonPrimitive?.content
+                                ?: "Unknown Tenant",
 
-                            Date: $viewingDate
-                            Time Slot: $viewingSlot
-                        """.trimIndent()
+                            tenantPhone = tenant?.get("phone")
+                                ?.jsonPrimitive?.content
+                                ?: "Not provided",
 
-                        requestDetails.add(details)
-                    }
+                            tenantEmail = tenant?.get("email")
+                                ?.jsonPrimitive?.content
+                                ?: "Not provided",
+
+                            viewingDate = viewing["viewing_date"]
+                                ?.jsonPrimitive?.content
+                                ?: "Not specified",
+
+                            viewingSlot = viewing["viewing_slot"]
+                                ?.jsonPrimitive?.content
+                                ?: "Not specified",
+
+                            status = viewing["status"]
+                                ?.jsonPrimitive?.content
+                                ?: "UNKNOWN"
+                        )
+                    )
                 }
 
-                requestDetails
-            }
+                requestsContainer.removeAllViews()
 
-            requestsContainer.removeAllViews()
+                if (requestDetails.isEmpty()) {
 
-            if (requests.isEmpty()) {
+                    requestsContainer.addView(
+                        TextView(this@ViewingRequestsActivity).apply {
+                            text = "No viewing requests have been made yet."
+                            textSize = 16f
+                            gravity = Gravity.CENTER
+                            setPadding(0, 30, 0, 30)
+                        }
+                    )
 
-                val emptyMessage = TextView(this@ViewingRequestsActivity).apply {
-                    text = "No viewing requests have been made yet."
-                    textSize = 16f
-                    gravity = Gravity.CENTER
-                    setPadding(0, 30, 0, 30)
+                    return@launch
                 }
 
-                requestsContainer.addView(emptyMessage)
-                return@launch
-            }
+                for (request in requestDetails) {
 
-            for (request in requests) {
-
-                val requestCard =
-                    LinearLayout(this@ViewingRequestsActivity).apply {
+                    val requestCard = LinearLayout(
+                        this@ViewingRequestsActivity
+                    ).apply {
                         orientation = LinearLayout.VERTICAL
                         setPadding(20, 20, 20, 20)
                         setBackgroundColor(0xFFF1F1F1.toInt())
                     }
 
-                val details =
-                    TextView(this@ViewingRequestsActivity).apply {
-                        text = request
+                    val details = TextView(
+                        this@ViewingRequestsActivity
+                    ).apply {
+                        text = """
+                            PROPERTY INFORMATION
+
+                            Property: ${request.propertyTitle}
+                            Location: ${request.propertyLocation}
+                            Monthly Rent: KES ${"%,.2f".format(request.rent)}
+
+                            OWNER INFORMATION
+
+                            Owner Name: ${request.ownerName}
+                            Owner Phone: ${request.ownerPhone}
+                            Owner Email: ${request.ownerEmail}
+
+                            TENANT INFORMATION
+
+                            Tenant Name: ${request.tenantName}
+                            Tenant Phone: ${request.tenantPhone}
+                            Tenant Email: ${request.tenantEmail}
+
+                            VIEWING APPOINTMENT
+
+                            Date: ${request.viewingDate}
+                            Time Slot: ${request.viewingSlot}
+                            Status: ${request.status}
+                        """.trimIndent()
+
                         textSize = 16f
                         setTextColor(0xFF222222.toInt())
                     }
 
-                requestCard.addView(details)
+                    requestCard.addView(details)
 
-                val cardParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = 20
+                    val cardParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        bottomMargin = 20
+                    }
+
+                    requestsContainer.addView(requestCard, cardParams)
                 }
 
-                requestsContainer.addView(requestCard, cardParams)
+            } catch (e: Exception) {
+
+                Toast.makeText(
+                    this@ViewingRequestsActivity,
+                    "Unable to load viewing requests: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

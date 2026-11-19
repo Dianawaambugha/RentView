@@ -1,10 +1,5 @@
 package com.example.rentview.viewmodel
 
-import com.example.rentview.R
-import com.example.rentview.data.*
-import com.example.rentview.ui.activities.*
-import com.example.rentview.ui.adapters.*
-
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,38 +18,36 @@ sealed class MyViewingsState {
     data class Error(val message: String) : MyViewingsState()
 }
 
-class MyViewingsViewModel(application: Application) : AndroidViewModel(application) {
+class MyViewingsViewModel(application: Application) :
+    AndroidViewModel(application) {
 
-    private val database = RentViewDatabase.getInstance(application)
-    private val propertyRepository = PropertyRepository(database)
-    private val repository = ViewingRepository(database, propertyRepository)
-    private val _state = MutableStateFlow<MyViewingsState>(MyViewingsState.Loading)
+    private val propertyRepository = PropertyRepository()
+    private val repository = ViewingRepository(propertyRepository)
+
+    private val _state =
+        MutableStateFlow<MyViewingsState>(MyViewingsState.Loading)
+
     val state: StateFlow<MyViewingsState> = _state
 
-    // One-time message (e.g. "Viewing cancelled") for the Activity to toast.
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    // Load bookings belonging to the authenticated Supabase user.
     fun load(tenantId: Long) {
-        if (tenantId <= 0L) {
-            _state.value = MyViewingsState.Error("Please log in again to see your viewings.")
-            return
-        }
-
         viewModelScope.launch {
-            // Only show the spinner on the first load, so the list does not
-            // flash every time the user comes back to this screen.
             if (_state.value !is MyViewingsState.Success) {
                 _state.value = MyViewingsState.Loading
             }
 
             try {
-                val items = repository.getViewings(tenantId)
+                val items = repository.getCloudViewings()
+
                 _state.value = if (items.isEmpty()) {
                     MyViewingsState.Empty
                 } else {
                     MyViewingsState.Success(items)
                 }
+
             } catch (e: Exception) {
                 _state.value = MyViewingsState.Error(
                     "Could not load your viewings. Please try again."
@@ -63,20 +56,34 @@ class MyViewingsViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // DELETE: cancel a viewing, stop its reminder and refresh the list.
+    // Cancel a Supabase viewing and its scheduled notification.
     fun cancel(viewing: ViewingItem, tenantId: Long) {
         viewModelScope.launch {
             try {
-                val deleted = repository.cancel(viewing.id, tenantId)
+                val context = getApplication<Application>()
+                val cloudId = viewing.supabaseId
 
-                if (deleted) {
-                    ViewingReminders.cancel(getApplication<Application>(), viewing.id)
-                    _message.value = "Viewing at ${viewing.propertyTitle} cancelled."
-                } else {
-                    _message.value = "That viewing could not be cancelled."
+                if (cloudId.isNullOrBlank()) {
+                    _message.value =
+                        "This viewing has no valid cloud reference."
+                    return@launch
                 }
+
+                val cancelled = repository.cancel(cloudId, tenantId)
+
+                if (cancelled) {
+                    ViewingReminders.cancel(context, cloudId)
+                }
+
+                _message.value = if (cancelled) {
+                    "Viewing at ${viewing.propertyTitle} cancelled."
+                } else {
+                    "That viewing could not be cancelled."
+                }
+
             } catch (e: Exception) {
-                _message.value = "Could not cancel the viewing. Please try again."
+                _message.value =
+                    "Could not cancel the viewing. Please try again."
             }
 
             load(tenantId)

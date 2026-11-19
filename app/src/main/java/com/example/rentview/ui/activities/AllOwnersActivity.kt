@@ -2,27 +2,38 @@ package com.example.rentview.ui.activities
 
 import android.os.Bundle
 import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.rentview.data.RentViewDatabase
-import com.example.rentview.data.UserEntity
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseClient
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class AllOwnersActivity : AppCompatActivity() {
 
-    private lateinit var database: RentViewDatabase
     private lateinit var ownersContainer: LinearLayout
+
+    private val supabase by lazy {
+        SupabaseClient.client
+    }
+
+    private data class Owner(
+        val id: String,
+        val fullName: String,
+        val email: String,
+        val phone: String,
+        val approvalStatus: String
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        database = RentViewDatabase.getInstance(this)
 
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -46,10 +57,13 @@ class AllOwnersActivity : AppCompatActivity() {
 
         val backButton = Button(this).apply {
             text = "Back to Dashboard"
-            setOnClickListener { finish() }
+            setOnClickListener {
+                finish()
+            }
         }
 
         mainLayout.addView(title)
+
         mainLayout.addView(
             scrollView,
             LinearLayout.LayoutParams(
@@ -58,6 +72,7 @@ class AllOwnersActivity : AppCompatActivity() {
                 1f
             )
         )
+
         mainLayout.addView(backButton)
 
         setContentView(mainLayout)
@@ -66,32 +81,70 @@ class AllOwnersActivity : AppCompatActivity() {
     }
 
     private fun displayOwners() {
+
+        ownersContainer.removeAllViews()
+
         lifecycleScope.launch {
-            val owners = withContext(Dispatchers.IO) {
-                database.userDao().getAllOwners()
-            }
+            try {
+                val profiles = supabase
+                    .from("profiles")
+                    .select {
+                        filter {
+                            eq("role", "PROPERTY_OWNER")
+                        }
+                    }
+                    .decodeList<JsonObject>()
 
-            ownersContainer.removeAllViews()
+                val owners = profiles.map { profile ->
 
-            if (owners.isEmpty()) {
-                val emptyMessage = TextView(this@AllOwnersActivity).apply {
-                    text = "No registered property owners found."
-                    textSize = 16f
-                    gravity = Gravity.CENTER
-                    setPadding(16, 40, 16, 40)
+                    Owner(
+                        id = profile["id"]
+                            ?.jsonPrimitive?.content ?: "Unknown",
+
+                        fullName = profile["full_name"]
+                            ?.jsonPrimitive?.content ?: "Unknown",
+
+                        email = profile["email"]
+                            ?.jsonPrimitive?.content ?: "Not provided",
+
+                        phone = profile["phone"]
+                            ?.jsonPrimitive?.content ?: "Not provided",
+
+                        approvalStatus = profile["approval_status"]
+                            ?.jsonPrimitive?.content ?: "UNKNOWN"
+                    )
                 }
 
-                ownersContainer.addView(emptyMessage)
-                return@launch
-            }
+                ownersContainer.removeAllViews()
 
-            owners.forEach { owner ->
-                addOwnerCard(owner)
+                if (owners.isEmpty()) {
+                    ownersContainer.addView(
+                        TextView(this@AllOwnersActivity).apply {
+                            text = "No registered property owners found."
+                            textSize = 16f
+                            gravity = Gravity.CENTER
+                            setPadding(16, 40, 16, 40)
+                        }
+                    )
+                    return@launch
+                }
+
+                owners.forEach { owner ->
+                    addOwnerCard(owner)
+                }
+
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@AllOwnersActivity,
+                    "Unable to load property owners: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
 
-    private fun addOwnerCard(owner: UserEntity) {
+    private fun addOwnerCard(owner: Owner) {
+
         val ownerCard = TextView(this).apply {
             text = """
                 Owner ID: ${owner.id}
@@ -103,17 +156,19 @@ class AllOwnersActivity : AppCompatActivity() {
 
             textSize = 16f
             setPadding(20, 20, 20, 20)
+
             setBackgroundResource(
                 android.R.drawable.dialog_holo_light_frame
             )
         }
 
         val params = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
         params.setMargins(0, 0, 0, 16)
+
         ownersContainer.addView(ownerCard, params)
     }
 }

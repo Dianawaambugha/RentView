@@ -11,17 +11,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
-import com.example.rentview.data.RentViewDatabase
-import com.example.rentview.data.UserEntity
-import kotlinx.coroutines.Dispatchers
+import com.example.rentview.data.SupabaseAuthRepository
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.security.MessageDigest
 
 class RegisterActivity : AppCompatActivity() {
 
-    private val database by lazy {
-        RentViewDatabase.getInstance(applicationContext)
+    private val authRepository by lazy {
+        SupabaseAuthRepository()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,7 +91,8 @@ class RegisterActivity : AppCompatActivity() {
                 }
 
                 passwordValue.length < 8 -> {
-                    password.error = "Password must have at least 8 characters"
+                    password.error =
+                        "Password must have at least 8 characters"
                 }
 
                 roleValue == "Select your role" -> {
@@ -107,62 +104,45 @@ class RegisterActivity : AppCompatActivity() {
                 }
 
                 else -> {
+
+                    val cloudRole = when (roleValue) {
+                        "Tenant" -> "TENANT"
+                        "Property Owner" -> "PROPERTY_OWNER"
+                        else -> null
+                    }
+
+                    if (cloudRole == null) {
+                        Toast.makeText(
+                            this,
+                            "Please select a valid role",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@setOnClickListener
+                    }
+
                     registerButton.isEnabled = false
 
                     lifecycleScope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            try {
-                                val existingUser =
-                                    database.userDao().getByEmail(emailValue)
 
-                                if (existingUser != null) {
-                                    false
-                                } else {
-                                    val passwordHash = hashPassword(passwordValue)
+                        try {
+                            authRepository.register(
+                                fullName = nameValue,
+                                email = emailValue,
+                                phone = phoneValue,
+                                password = passwordValue,
+                                role = cloudRole
+                            )
 
-                                    val approvalStatus =
-                                        if (roleValue == "Property Owner") {
-                                            "PENDING"
-                                        } else {
-                                            "APPROVED"
-                                        }
-
-                                    val newUser = UserEntity(
-                                        fullName = nameValue,
-                                        email = emailValue,
-                                        phone = phoneValue,
-                                        passwordHash = passwordHash,
-                                        role = roleValue,
-                                        approvalStatus = approvalStatus
-                                    )
-
-                                    database.userDao().insert(newUser)
-                                    true
-                                }
-                            } catch (exception: Exception) {
-                                android.util.Log.e(
-                                    "RentView",
-                                    "Registration failed",
-                                    exception
-                                )
-                                false
-                            }
-                        }
-
-                        registerButton.isEnabled = true
-
-                        if (result) {
-
-                             if (roleValue == "Property Owner") {
+                            if (cloudRole == "PROPERTY_OWNER") {
                                 Toast.makeText(
                                     this@RegisterActivity,
-                                    "Registration successful! Your account is pending administrator approval. You cannot list properties until approved.",
+                                    "Registration successful! Your account is pending administrator approval.",
                                     Toast.LENGTH_LONG
                                 ).show()
                             } else {
                                 Toast.makeText(
                                     this@RegisterActivity,
-                                    "Account created successfully! You can now log in.",
+                                    "Account created successfully! Check your email if verification is required, then log in.",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -173,29 +153,27 @@ class RegisterActivity : AppCompatActivity() {
                             password.text.clear()
                             role.setSelection(0)
 
-                        } else {
-                            email.error =
-                                "This email may already be registered"
+                        } catch (exception: Exception) {
+
+                            android.util.Log.e(
+                                "RentView",
+                                "Supabase registration failed",
+                                exception
+                            )
 
                             Toast.makeText(
                                 this@RegisterActivity,
-                                "Registration failed. This email may already exist.",
+                                exception.message
+                                    ?: "Registration failed. Please try again.",
                                 Toast.LENGTH_LONG
                             ).show()
+
+                        } finally {
+                            registerButton.isEnabled = true
                         }
                     }
                 }
             }
-        }
-    }
-
-    private fun hashPassword(password: String): String {
-        val bytes = MessageDigest
-            .getInstance("SHA-256")
-            .digest(password.toByteArray(Charsets.UTF_8))
-
-        return bytes.joinToString("") {
-            "%02x".format(it)
         }
     }
 }

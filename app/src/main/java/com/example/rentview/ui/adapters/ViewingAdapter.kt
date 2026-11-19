@@ -26,13 +26,20 @@ class ViewingAdapter(
         val cancelButton: Button = view.findViewById(R.id.btnCancelViewing)
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewingViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int
+    ): ViewingViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_viewing, parent, false)
+
         return ViewingViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: ViewingViewHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: ViewingViewHolder,
+        position: Int
+    ) {
         val viewing = getItem(position)
 
         holder.title.text = viewing.propertyTitle
@@ -40,17 +47,38 @@ class ViewingAdapter(
         holder.whenText.text =
             "${ViewingTime.displayDate(viewing.date)} at ${viewing.timeSlot}"
 
-        holder.rescheduleButton.setOnClickListener { onReschedule(viewing) }
-        holder.cancelButton.setOnClickListener { onCancel(viewing) }
+        holder.rescheduleButton.setOnClickListener {
+            onReschedule(viewing)
+        }
+
+        holder.cancelButton.setOnClickListener {
+            onCancel(viewing)
+        }
     }
 
     companion object {
         private val DIFF = object : DiffUtil.ItemCallback<ViewingItem>() {
-            override fun areItemsTheSame(old: ViewingItem, new: ViewingItem) =
-                old.id == new.id
 
-            override fun areContentsTheSame(old: ViewingItem, new: ViewingItem) =
-                old == new
+            override fun areItemsTheSame(
+                old: ViewingItem,
+                new: ViewingItem
+            ): Boolean {
+                return if (
+                    !old.supabaseId.isNullOrBlank() &&
+                    !new.supabaseId.isNullOrBlank()
+                ) {
+                    old.supabaseId == new.supabaseId
+                } else {
+                    old.id == new.id
+                }
+            }
+
+            override fun areContentsTheSame(
+                old: ViewingItem,
+                new: ViewingItem
+            ): Boolean {
+                return old == new
+            }
         }
     }
 }
