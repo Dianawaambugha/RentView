@@ -10,7 +10,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
+import com.example.rentview.data.PropertyField
+import com.example.rentview.data.PropertyValidator
 import com.example.rentview.data.SupabaseClient
+import com.example.rentview.data.ValidationResult
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.storage.storage
@@ -26,6 +29,9 @@ import java.util.UUID
 
 class AddPropertyActivity : AppCompatActivity() {
 
+    // A photo that has already been read and checked, ready to upload.
+    private class PreparedPhoto(val bytes: ByteArray, val extension: String)
+
     private val selectedPhotos = mutableListOf<Uri>()
 
     private val supabase by lazy {
@@ -35,25 +41,48 @@ class AddPropertyActivity : AppCompatActivity() {
     private val photoPicker =
         registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
 
-            if (uris.isNotEmpty()) {
-                selectedPhotos.clear()
+            if (uris.isEmpty()) return@registerForActivityResult
 
-                uris.forEach { uri ->
-                    try {
-                        contentResolver.takePersistableUriPermission(
-                            uri,
-                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    } catch (_: Exception) {
-                        // Permission may already be available.
-                    }
+            val countError = PropertyValidator.validatePhotoCount(
+                uris.size,
+                requireAtLeastOne = true
+            )
 
-                    selectedPhotos.add(uri)
+            if (countError != null) {
+                Toast.makeText(this, countError, Toast.LENGTH_LONG).show()
+                return@registerForActivityResult
+            }
+
+            // Keep only real images (JPEG, PNG or WebP).
+            val validUris = uris.filter {
+                PropertyValidator.isAllowedPhotoType(contentResolver.getType(it))
+            }
+
+            if (validUris.size < uris.size) {
+                Toast.makeText(
+                    this,
+                    "Only JPEG, PNG or WebP photos are allowed. Other files were skipped.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+            selectedPhotos.clear()
+
+            validUris.forEach { uri ->
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {
+                    // Permission may already be available.
                 }
 
-                findViewById<TextView>(R.id.tvSelectedPhotos).text =
-                    "${selectedPhotos.size} photo(s) selected"
+                selectedPhotos.add(uri)
             }
+
+            findViewById<TextView>(R.id.tvSelectedPhotos).text =
+                "${selectedPhotos.size} photo(s) selected"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,35 +110,45 @@ class AddPropertyActivity : AppCompatActivity() {
 
         btnSaveProperty.setOnClickListener {
 
-            val title = etTitle.text.toString().trim()
-            val location = etLocation.text.toString().trim()
-            val rent = etRent.text.toString().trim().toDoubleOrNull()
-            val bedrooms = etBedrooms.text.toString().trim().toIntOrNull()
-            val description = etDescription.text.toString().trim()
+            // Clear errors from a previous attempt.
+            listOf(etTitle, etLocation, etRent, etBedrooms, etDescription)
+                .forEach { it.error = null }
 
-            if (
-                title.isEmpty() ||
-                location.isEmpty() ||
-                rent == null ||
-                rent <= 0 ||
-                bedrooms == null ||
-                bedrooms < 0 ||
-                description.isEmpty()
-            ) {
-                Toast.makeText(
-                    this,
-                    "Please enter valid property details.",
-                    Toast.LENGTH_LONG
-                ).show()
+            val result = PropertyValidator.validate(
+                title = etTitle.text.toString(),
+                location = etLocation.text.toString(),
+                rentText = etRent.text.toString(),
+                bedroomsText = etBedrooms.text.toString(),
+                description = etDescription.text.toString()
+            )
+
+            if (result is ValidationResult.Invalid) {
+
+                val fieldViews = mapOf(
+                    PropertyField.TITLE to etTitle,
+                    PropertyField.LOCATION to etLocation,
+                    PropertyField.RENT to etRent,
+                    PropertyField.BEDROOMS to etBedrooms,
+                    PropertyField.DESCRIPTION to etDescription
+                )
+
+                result.errors.forEach { (field, message) ->
+                    fieldViews[field]?.error = message
+                }
+
+                fieldViews[result.errors.keys.first()]?.requestFocus()
                 return@setOnClickListener
             }
 
-            if (selectedPhotos.isEmpty()) {
-                Toast.makeText(
-                    this,
-                    "Please select at least one property photo.",
-                    Toast.LENGTH_LONG
-                ).show()
+            val property = (result as ValidationResult.Valid).property
+
+            val photoError = PropertyValidator.validatePhotoCount(
+                selectedPhotos.size,
+                requireAtLeastOne = true
+            )
+
+            if (photoError != null) {
+                Toast.makeText(this, photoError, Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
 
@@ -117,13 +156,41 @@ class AddPropertyActivity : AppCompatActivity() {
 
             lifecycleScope.launch {
 
+                var cloudPropertyId: String? = null
+                var propertyInserted = false
+                val uploadedPaths = mutableListOf<String>()
+
                 try {
+
+                    // Read and check every photo BEFORE saving anything,
+                    // so a bad file never leaves a half-created listing.
+                    val preparedPhotos = withContext(Dispatchers.IO) {
+                        selectedPhotos.map { uri ->
+
+                            val mimeType = contentResolver.getType(uri)
+
+                            if (!PropertyValidator.isAllowedPhotoType(mimeType)) {
+                                throw Exception("Only JPEG, PNG or WebP photos are allowed.")
+                            }
+
+                            val bytes = contentResolver.openInputStream(uri)?.use {
+                                it.readBytes()
+                            } ?: throw Exception("Could not read one of the selected photos.")
+
+                            if (!PropertyValidator.isPhotoSizeOk(bytes.size)) {
+                                throw Exception(
+                                    "Each photo must be under " +
+                                            "${PropertyValidator.MAX_PHOTO_BYTES / (1024 * 1024)} MB."
+                                )
+                            }
+
+                            PreparedPhoto(bytes, PropertyValidator.photoExtension(mimeType))
+                        }
+                    }
 
                     // Identify the authenticated Supabase user.
                     val cloudUserId = supabase.auth.currentSessionOrNull()?.user?.id
-                        ?: throw Exception(
-                            "Please log in again before adding a property."
-                        )
+                        ?: throw Exception("Please log in again before adding a property.")
 
                     // Read the authoritative owner profile from Supabase.
                     val profiles = supabase.from("profiles")
@@ -135,80 +202,56 @@ class AddPropertyActivity : AppCompatActivity() {
                         .decodeList<JsonObject>()
 
                     val profile = profiles.firstOrNull()
-                        ?: throw Exception(
-                            "Your cloud user profile could not be found."
-                        )
+                        ?: throw Exception("Your cloud user profile could not be found.")
 
-                    val cloudRole = profile["role"]
-                        ?.jsonPrimitive?.contentOrNull
-
-                    val cloudApprovalStatus = profile["approval_status"]
-                        ?.jsonPrimitive?.contentOrNull
+                    val cloudRole = profile["role"]?.jsonPrimitive?.contentOrNull
+                    val cloudApprovalStatus =
+                        profile["approval_status"]?.jsonPrimitive?.contentOrNull
 
                     if (cloudRole != "PROPERTY_OWNER") {
-                        throw Exception(
-                            "Only property owners can add properties."
-                        )
+                        throw Exception("Only property owners can add properties.")
                     }
 
                     if (cloudApprovalStatus != "APPROVED") {
-                        throw Exception(
-                            "Your owner account is awaiting admin approval."
-                        )
+                        throw Exception("Your owner account is awaiting admin approval.")
                     }
 
-                    val cloudPropertyId = UUID.randomUUID().toString()
-                    val createdAt = java.time.Instant.now().toString()
+                    val newPropertyId = UUID.randomUUID().toString()
+                    cloudPropertyId = newPropertyId
 
-                    // Insert the property into Supabase.
+                    // New listings always start as PENDING until an admin approves them.
                     val propertyPayload = buildJsonObject {
-                        put("id", cloudPropertyId)
+                        put("id", newPropertyId)
                         put("owner_id", cloudUserId)
-                        put("title", title)
-                        put("location", location)
-                        put("rent", rent)
-                        put("bedrooms", bedrooms)
-                        put("description", description)
+                        put("title", property.title)
+                        put("location", property.location)
+                        put("rent", property.rent)
+                        put("bedrooms", property.bedrooms)
+                        put("description", property.description)
                         put("property_status", "PENDING")
-                        put("created_at", createdAt)
+                        put("created_at", java.time.Instant.now().toString())
                     }
 
                     withContext(Dispatchers.IO) {
                         supabase.from("properties").insert(propertyPayload)
                     }
+                    propertyInserted = true
 
-                    // Upload selected photos and save their Storage paths.
-                    for (uri in selectedPhotos) {
-
-                        val mimeType = contentResolver.getType(uri)
-                            ?: "image/jpeg"
-
-                        val extension = when (mimeType.lowercase()) {
-                            "image/png" -> "png"
-                            "image/webp" -> "webp"
-                            "image/gif" -> "gif"
-                            else -> "jpg"
-                        }
+                    // Upload the photos and save their Storage paths.
+                    for (photo in preparedPhotos) {
 
                         val photoPath =
-                            "$cloudUserId/$cloudPropertyId/${UUID.randomUUID()}.$extension"
-
-                        val photoBytes = withContext(Dispatchers.IO) {
-                            contentResolver.openInputStream(uri)?.use {
-                                it.readBytes()
-                            }
-                        } ?: throw Exception(
-                            "Could not read one of the selected photos."
-                        )
+                            "$cloudUserId/$newPropertyId/${UUID.randomUUID()}.${photo.extension}"
 
                         withContext(Dispatchers.IO) {
                             supabase.storage
                                 .from("property-photos")
-                                .upload(photoPath, photoBytes)
+                                .upload(photoPath, photo.bytes)
                         }
+                        uploadedPaths.add(photoPath)
 
                         val photoPayload = buildJsonObject {
-                            put("property_id", cloudPropertyId)
+                            put("property_id", newPropertyId)
                             put("photo_uri", photoPath)
                         }
 
@@ -227,6 +270,9 @@ class AddPropertyActivity : AppCompatActivity() {
 
                 } catch (e: Exception) {
 
+                    // Undo anything saved so far so no half-created listing is left behind.
+                    rollback(cloudPropertyId, propertyInserted, uploadedPaths)
+
                     Toast.makeText(
                         this@AddPropertyActivity,
                         "Property submission failed: ${e.message ?: "Please try again."}",
@@ -235,6 +281,45 @@ class AddPropertyActivity : AppCompatActivity() {
 
                 } finally {
                     btnSaveProperty.isEnabled = true
+                }
+            }
+        }
+    }
+
+    // Best effort: each step is wrapped so one failure does not stop the others.
+    private suspend fun rollback(
+        propertyId: String?,
+        propertyInserted: Boolean,
+        uploadedPaths: List<String>
+    ) {
+        if (propertyId == null) return
+
+        withContext(Dispatchers.IO) {
+
+            if (uploadedPaths.isNotEmpty()) {
+                try {
+                    supabase.storage.from("property-photos").delete(uploadedPaths)
+                } catch (_: Exception) {
+                }
+            }
+
+            if (propertyInserted) {
+                try {
+                    supabase.from("property_photos").delete {
+                        filter {
+                            eq("property_id", propertyId)
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+
+                try {
+                    supabase.from("properties").delete {
+                        filter {
+                            eq("id", propertyId)
+                        }
+                    }
+                } catch (_: Exception) {
                 }
             }
         }

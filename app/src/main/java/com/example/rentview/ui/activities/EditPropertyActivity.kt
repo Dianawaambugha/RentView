@@ -12,7 +12,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.rentview.R
+import com.example.rentview.data.PropertyField
+import com.example.rentview.data.PropertyValidator
 import com.example.rentview.data.SupabaseClient
+import com.example.rentview.data.ValidationResult
 import com.example.rentview.ui.ImageLoader
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -57,9 +60,31 @@ class EditPropertyActivity : AppCompatActivity() {
 
             if (uris.isNotEmpty()) {
 
+                val countError = PropertyValidator.validatePhotoCount(
+                    uris.size,
+                    requireAtLeastOne = false
+                )
+
+                if (countError != null) {
+                    Toast.makeText(this, countError, Toast.LENGTH_LONG).show()
+                    return@registerForActivityResult
+                }
+
+                val validUris = uris.filter {
+                    PropertyValidator.isAllowedPhotoType(contentResolver.getType(it))
+                }
+
+                if (validUris.size < uris.size) {
+                    Toast.makeText(
+                        this,
+                        "Only JPEG, PNG or WebP photos are allowed. Other files were skipped.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+
                 selectedPhotos.clear()
 
-                uris.forEach { uri ->
+                validUris.forEach { uri ->
                     try {
                         contentResolver.takePersistableUriPermission(
                             uri,
@@ -229,37 +254,50 @@ class EditPropertyActivity : AppCompatActivity() {
 
     private fun submitPropertyChanges() {
 
-        val title = titleInput.text.toString().trim()
-        val location = locationInput.text.toString().trim()
-        val rentText = rentInput.text.toString().trim()
-        val bedroomsText = bedroomsInput.text.toString().trim()
-        val description = descriptionInput.text.toString().trim()
+        listOf(titleInput, locationInput, rentInput, bedroomsInput, descriptionInput)
+            .forEach { it.error = null }
 
-        if (
-            title.isBlank() ||
-            location.isBlank() ||
-            rentText.isBlank() ||
-            bedroomsText.isBlank() ||
-            description.isBlank()
-        ) {
-            Toast.makeText(
-                this,
-                "Please fill in all fields.",
-                Toast.LENGTH_SHORT
-            ).show()
+        val validation = PropertyValidator.validate(
+            title = titleInput.text.toString(),
+            location = locationInput.text.toString(),
+            rentText = rentInput.text.toString(),
+            bedroomsText = bedroomsInput.text.toString(),
+            description = descriptionInput.text.toString()
+        )
+
+        if (validation is ValidationResult.Invalid) {
+
+            val fieldViews = mapOf(
+                PropertyField.TITLE to titleInput,
+                PropertyField.LOCATION to locationInput,
+                PropertyField.RENT to rentInput,
+                PropertyField.BEDROOMS to bedroomsInput,
+                PropertyField.DESCRIPTION to descriptionInput
+            )
+
+            validation.errors.forEach { (field, message) ->
+                fieldViews[field]?.error = message
+            }
+
+            fieldViews[validation.errors.keys.first()]?.requestFocus()
             return
         }
 
-        val rent = rentText.toDoubleOrNull()
-        val bedrooms = bedroomsText.toIntOrNull()
+        val validated = (validation as ValidationResult.Valid).property
+        val title = validated.title
+        val location = validated.location
+        val rent = validated.rent
+        val bedrooms = validated.bedrooms
+        val description = validated.description
 
-        if (rent == null || rent <= 0) {
-            rentInput.error = "Enter a valid rent greater than zero."
-            return
-        }
+        // Replacement photos are optional when editing, but still limited.
+        val photoError = PropertyValidator.validatePhotoCount(
+            selectedPhotos.size,
+            requireAtLeastOne = false
+        )
 
-        if (bedrooms == null || bedrooms < 0) {
-            bedroomsInput.error = "Enter a valid number of bedrooms."
+        if (photoError != null) {
+            Toast.makeText(this, photoError, Toast.LENGTH_LONG).show()
             return
         }
 
@@ -327,14 +365,13 @@ class EditPropertyActivity : AppCompatActivity() {
 
                     for (uri in selectedPhotos) {
 
-                        val mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+                        val mimeType = contentResolver.getType(uri)
 
-                        val extension = when {
-                            mimeType.contains("png") -> "png"
-                            mimeType.contains("webp") -> "webp"
-                            mimeType.contains("gif") -> "gif"
-                            else -> "jpg"
+                        if (!PropertyValidator.isAllowedPhotoType(mimeType)) {
+                            throw Exception("Only JPEG, PNG or WebP photos are allowed.")
                         }
+
+                        val extension = PropertyValidator.photoExtension(mimeType)
 
                         val photoPath =
                             "$cloudUserId/$propertyId/edits/$newRequestId/${UUID.randomUUID()}.$extension"
@@ -343,6 +380,13 @@ class EditPropertyActivity : AppCompatActivity() {
                             contentResolver.openInputStream(uri)?.use {
                                 it.readBytes()
                             } ?: throw Exception("Could not read selected photo.")
+                        }
+
+                        if (!PropertyValidator.isPhotoSizeOk(photoBytes.size)) {
+                            throw Exception(
+                                "Each photo must be under " +
+                                        "${PropertyValidator.MAX_PHOTO_BYTES / (1024 * 1024)} MB."
+                            )
                         }
 
                         withContext(Dispatchers.IO) {
